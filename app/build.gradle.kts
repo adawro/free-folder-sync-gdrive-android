@@ -42,7 +42,9 @@ android {
     }
     defaultConfig {
         // Logowanie przez Google Play Services działa tylko z kluczem zarejestrowanym w Google Cloud autora
-        buildConfigField("boolean", "BUILTIN_AUTH", local.getProperty("builtinAuth", "false"))
+        // -PbuiltinAuth=false nadpisuje local.properties (publiczne wydania)
+        val builtinAuth = (findProperty("builtinAuth") as String?) ?: local.getProperty("builtinAuth", "false")
+        buildConfigField("boolean", "BUILTIN_AUTH", builtinAuth)
     }
 
     compileOptions {
