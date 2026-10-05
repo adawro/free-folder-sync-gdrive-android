@@ -5,7 +5,7 @@
 
     <!-- 1. Account -->
     <string name="section_account">1. Google account</string>
-    <string name="connected">Connected to Google Drive</string>
+    <string name="connected">✓ Signed in successfully</string>
     <string name="not_connected">Not connected</string>
     <string name="builtin_auth">Built-in sign-in (author\'s account)</string>
     <string name="connect">Connect to Google Drive</string>
@@ -14,7 +14,6 @@
     <string name="client_id">Client ID</string>
     <string name="client_secret">Client secret</string>
     <string name="sign_in_browser">Sign in via browser</string>
-    <string name="sign_in_again">Sign in again</string>
     <string name="sign_out">Sign out</string>
     <string name="connect_failed">Could not connect: %1$s</string>
 

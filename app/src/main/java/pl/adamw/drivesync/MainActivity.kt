@@ -174,15 +174,20 @@ private fun Screen() {
                     style = MaterialTheme.typography.bodySmall,
                 )
                 OutlinedTextField(
-                    value = clientId, onValueChange = { clientId = it },
+                    value = clientId, onValueChange = { clientId = it }, enabled = !connected,
                     label = { Text(stringResource(R.string.client_id)) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
-                    value = clientSecret, onValueChange = { clientSecret = it },
+                    value = clientSecret, onValueChange = { clientSecret = it }, enabled = !connected,
                     label = { Text(stringResource(R.string.client_secret)) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                     visualTransformation = PasswordVisualTransformation(),
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Po zalogowaniu pola są zablokowane; zmiana klienta dopiero po wylogowaniu
+                if (connected) {
+                    OutlinedButton(onClick = { CustomOAuth.signOut(context); refresh++ }) {
+                        Text(stringResource(R.string.sign_out))
+                    }
+                } else {
                     Button(
                         onClick = {
                             CustomOAuth.saveClient(context, clientId, clientSecret)
@@ -194,10 +199,7 @@ private fun Screen() {
                             }
                         },
                         enabled = clientId.isNotBlank() && clientSecret.isNotBlank(),
-                    ) { Text(stringResource(if (connected) R.string.sign_in_again else R.string.sign_in_browser)) }
-                    if (connected) {
-                        OutlinedButton(onClick = { CustomOAuth.signOut(context); refresh++ }) { Text(stringResource(R.string.sign_out)) }
-                    }
+                    ) { Text(stringResource(R.string.sign_in_browser)) }
                 }
             }
         }

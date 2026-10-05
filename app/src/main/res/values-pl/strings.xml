@@ -3,14 +3,13 @@
     <string name="app_subtitle">Kopiowanie folderu z telefonu na Google Drive (w jedną stronę, nic nie jest usuwane).</string>
 
     <string name="section_account">1. Konto Google</string>
-    <string name="connected">Połączono z Google Drive</string>
+    <string name="connected">✓ Zalogowano pomyślnie</string>
     <string name="not_connected">Nie połączono</string>
     <string name="builtin_auth">Logowanie wbudowane (konto autora)</string>
     <string name="connect">Połącz z Google Drive</string>
     <string name="reconnect">Połącz ponownie</string>
     <string name="custom_client_hint">Własny klient OAuth z Twojego projektu Google Cloud (typ \"Desktop app\", włączone Google Drive API). Instrukcja krok po kroku w README.</string>
     <string name="sign_in_browser">Zaloguj przez przeglądarkę</string>
-    <string name="sign_in_again">Zaloguj ponownie</string>
     <string name="sign_out">Wyloguj</string>
     <string name="connect_failed">Nie udało się połączyć: %1$s</string>
 
