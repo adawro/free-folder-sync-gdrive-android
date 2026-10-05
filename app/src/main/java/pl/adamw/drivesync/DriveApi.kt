@@ -115,7 +115,7 @@ class DriveApi(private val context: Context) {
         response.use {
             if (existingId != null && it.code == 404) return null
             if (!it.isSuccessful) throw DriveException(it.code, it.body?.string().orEmpty().take(300))
-            return it.header("Location") ?: throw IOException("Brak adresu sesji wysyłki")
+            return it.header("Location") ?: throw IOException(context.getString(R.string.err_no_session_url))
         }
     }
 
@@ -138,7 +138,7 @@ class DriveApi(private val context: Context) {
                         var left = length
                         while (left > 0) {
                             val n = input.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
-                            if (n < 0) throw IOException("Plik skrócił się w trakcie wysyłki")
+                            if (n < 0) throw IOException(context.getString(R.string.err_file_shrunk))
                             sink.write(buf, 0, n)
                             left -= n
                         }

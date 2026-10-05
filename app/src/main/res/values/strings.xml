@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Free Folder Sync</string>
+    <string name="app_subtitle">Copies a folder from your phone to Google Drive (one way, nothing is ever deleted).</string>
+
+    <!-- 1. Account -->
+    <string name="section_account">1. Google account</string>
+    <string name="connected">Connected to Google Drive</string>
+    <string name="not_connected">Not connected</string>
+    <string name="builtin_auth">Built-in sign-in (author\'s account)</string>
+    <string name="connect">Connect to Google Drive</string>
+    <string name="reconnect">Reconnect</string>
+    <string name="custom_client_hint">Your own OAuth client from your Google Cloud project (type \"Desktop app\", Google Drive API enabled). See the README for a step-by-step guide.</string>
+    <string name="client_id">Client ID</string>
+    <string name="client_secret">Client secret</string>
+    <string name="sign_in_browser">Sign in via browser</string>
+    <string name="sign_in_again">Sign in again</string>
+    <string name="sign_out">Sign out</string>
+    <string name="connect_failed">Could not connect: %1$s</string>
+
+    <!-- 2./3. Folders -->
+    <string name="section_phone_folder">2. Folder on the phone</string>
+    <string name="not_selected">Not selected</string>
+    <string name="choose_folder">Choose folder</string>
+    <string name="section_drive_folder">3. Folder on Google Drive</string>
+    <string name="drive_path_label">Path from \"My Drive\"</string>
+    <string name="default_drive_parent">Phone</string>
+    <string name="save">Save</string>
+
+    <!-- 4. When -->
+    <string name="section_when">4. When to upload</string>
+    <string name="upload_via">Upload via:</string>
+    <string name="wifi">Wi-Fi</string>
+    <string name="mobile_data">Mobile data</string>
+    <string name="charging_only">Only while charging</string>
+    <string name="daily_at">Every day at</string>
+    <string name="next_run">Next upload: %1$s. If conditions are not met at %2$s, the upload starts as soon as they are.</string>
+
+    <!-- Status -->
+    <string name="section_status">Status</string>
+    <string name="uploaded_count">Uploaded files: %1$d</string>
+    <string name="last_sync">Last sync: %1$s</string>
+    <string name="never">not yet</string>
+    <string name="uploading_file">Uploading: %1$s (%2$d%%)</string>
+    <string name="scanning">Checking folder…</string>
+    <string name="sync_now">Sync now</string>
+    <string name="section_log">Log</string>
+    <string name="log_empty">Empty</string>
+
+    <!-- Notifications -->
+    <string name="channel_sync">Sync</string>
+    <string name="notif_uploading">Uploading to Google Drive</string>
+    <string name="notif_sign_in_title">Free Folder Sync: sign in again</string>
+    <string name="notif_sign_in_text">Sync is paused until you reconnect to Google</string>
+
+    <!-- Log -->
+    <string name="log_uploaded">Uploaded %1$s (%2$s)</string>
+    <string name="log_resuming">%1$s: resuming from %2$s</string>
+    <string name="log_target_gone">Folder \"%1$s\" is gone from Drive - all files will be uploaded again</string>
+    <string name="log_summary">Sync: uploaded %1$d, errors %2$d, waiting %3$d</string>
+    <string name="log_needs_sign_in">Google Drive needs to be reconnected - open the app</string>
+    <string name="log_network_error">Network error: %1$s</string>
+    <string name="log_config_error">Configuration error</string>
+    <string name="log_unexpected">Unexpected error: %1$s</string>
+    <string name="err_no_phone_folder">No folder selected on the phone</string>
+    <string name="err_no_drive_folder">No folder set on Google Drive</string>
+    <string name="err_session_expired">Upload session expired, will retry</string>
+    <string name="err_md5_mismatch">MD5 on Drive does not match the file - will upload again</string>
+    <string name="err_no_session_url">No upload session URL</string>
+    <string name="err_file_shrunk">File got shorter during upload</string>
+
+    <!-- Sign-in (browser) -->
+    <string name="oauth_enter_client">Enter client ID and client secret</string>
+    <string name="oauth_bad_state">Invalid response (state)</string>
+    <string name="oauth_google_error">Google: %1$s</string>
+    <string name="oauth_no_code">No authorization code</string>
+    <string name="oauth_no_refresh">Google did not return a refresh token</string>
+    <string name="oauth_timeout">Sign-in timed out</string>
+    <string name="oauth_error">Sign-in error: %1$s</string>
+    <string name="oauth_page_ok">Connected to Google Drive</string>
+    <string name="oauth_page_fail">Sign-in failed</string>
+    <string name="oauth_page_back">You can go back to the app.</string>
+</resources>

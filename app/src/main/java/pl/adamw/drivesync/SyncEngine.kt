@@ -23,8 +23,8 @@ class SyncEngine(
     private val drive = DriveApi(context)
 
     suspend fun run(): SyncSummary = lock.withLock {
-        val tree = settings.treeUri ?: throw IllegalStateException("Nie wybrano folderu w telefonie")
-        val target = settings.drivePath.ifEmpty { throw IllegalStateException("Nie ustawiono folderu na Drive") }
+        val tree = settings.treeUri ?: throw IllegalStateException(context.getString(R.string.err_no_phone_folder))
+        val target = settings.drivePath.ifEmpty { throw IllegalStateException(context.getString(R.string.err_no_drive_folder)) }
 
         val now = System.currentTimeMillis()
         val files = LocalFiles.list(context, tree)
@@ -58,7 +58,7 @@ class SyncEngine(
     private fun checkTargetStillExists(target: String) {
         val id = db.folderId(target) ?: return
         if (!drive.exists(id)) {
-            db.log("Folder \"$target\" zniknął z Drive - wszystkie pliki zostaną wysłane ponownie")
+            db.log(context.getString(R.string.log_target_gone, target))
             db.forgetDrive()
         }
     }
@@ -87,7 +87,7 @@ class SyncEngine(
         if (session != null) {
             state = drive.queryUpload(session, f.size)
             if (state is UploadState.Expired) session = null
-            else if (state is UploadState.Partial && state.offset > 0) db.log("${f.path}: wznawiam od ${mb(state.offset)}")
+            else if (state is UploadState.Partial && state.offset > 0) db.log(context.getString(R.string.log_resuming, f.path, mb(state.offset)))
         }
         if (session == null) {
             session = drive.startUpload(name, parent, record?.driveId, f.size, f.mime)
@@ -102,7 +102,7 @@ class SyncEngine(
         while (state is UploadState.Partial) {
             onProgress(f.path, state.offset, f.size)
             state = drive.uploadChunk(session, f.uri, state.offset, f.size, CHUNK)
-            if (state is UploadState.Expired) throw IOException("Sesja wysyłki wygasła, spróbuję ponownie")
+            if (state is UploadState.Expired) throw IOException(context.getString(R.string.err_session_expired))
         }
         val done = (state as UploadState.Done).file
         onProgress(f.path, f.size, f.size)
@@ -110,10 +110,10 @@ class SyncEngine(
         val localMd5 = md5(f)
         if (done.md5 != null && !done.md5.equals(localMd5, ignoreCase = true)) {
             db.saveFile(FileRecord(f.path, f.size, f.mtime, done.id, null, 0, null, 0, 0))
-            throw IOException("Suma MD5 na Drive nie zgadza się z plikiem - wyślę ponownie")
+            throw IOException(context.getString(R.string.err_md5_mismatch))
         }
         db.saveFile(FileRecord(f.path, f.size, f.mtime, done.id, localMd5, System.currentTimeMillis(), null, 0, 0))
-        db.log("Wysłano ${f.path} (${mb(f.size)})")
+        db.log(context.getString(R.string.log_uploaded, f.path, mb(f.size)))
     }
 
     private fun md5(f: LocalFile): String {

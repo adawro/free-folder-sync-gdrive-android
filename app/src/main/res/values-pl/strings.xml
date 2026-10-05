@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_subtitle">Kopiowanie folderu z telefonu na Google Drive (w jedną stronę, nic nie jest usuwane).</string>
+
+    <string name="section_account">1. Konto Google</string>
+    <string name="connected">Połączono z Google Drive</string>
+    <string name="not_connected">Nie połączono</string>
+    <string name="builtin_auth">Logowanie wbudowane (konto autora)</string>
+    <string name="connect">Połącz z Google Drive</string>
+    <string name="reconnect">Połącz ponownie</string>
+    <string name="custom_client_hint">Własny klient OAuth z Twojego projektu Google Cloud (typ \"Desktop app\", włączone Google Drive API). Instrukcja krok po kroku w README.</string>
+    <string name="sign_in_browser">Zaloguj przez przeglądarkę</string>
+    <string name="sign_in_again">Zaloguj ponownie</string>
+    <string name="sign_out">Wyloguj</string>
+    <string name="connect_failed">Nie udało się połączyć: %1$s</string>
+
+    <string name="section_phone_folder">2. Folder w telefonie</string>
+    <string name="not_selected">Nie wybrano</string>
+    <string name="choose_folder">Wybierz folder</string>
+    <string name="section_drive_folder">3. Folder na Google Drive</string>
+    <string name="drive_path_label">Ścieżka od \"Mój dysk\"</string>
+    <string name="default_drive_parent">Telefon</string>
+    <string name="save">Zapisz</string>
+
+    <string name="section_when">4. Kiedy wysyłać</string>
+    <string name="upload_via">Wysyłaj przez:</string>
+    <string name="mobile_data">Dane komórkowe</string>
+    <string name="charging_only">Tylko podczas ładowania</string>
+    <string name="daily_at">Codziennie o</string>
+    <string name="next_run">Następna wysyłka: %1$s. Jeśli o %2$s warunki nie są spełnione, wysyłka nastąpi, gdy tylko będą.</string>
+
+    <string name="section_status">Stan</string>
+    <string name="uploaded_count">Wysłanych plików: %1$d</string>
+    <string name="last_sync">Ostatnia synchronizacja: %1$s</string>
+    <string name="never">jeszcze nie było</string>
+    <string name="uploading_file">Wysyłanie: %1$s (%2$d%%)</string>
+    <string name="scanning">Sprawdzanie folderu…</string>
+    <string name="sync_now">Synchronizuj teraz</string>
+    <string name="section_log">Dziennik</string>
+    <string name="log_empty">Pusto</string>
+
+    <string name="channel_sync">Synchronizacja</string>
+    <string name="notif_uploading">Wysyłanie na Google Drive</string>
+    <string name="notif_sign_in_title">Free Folder Sync: zaloguj się ponownie</string>
+    <string name="notif_sign_in_text">Synchronizacja jest wstrzymana do ponownego połączenia z Google</string>
+
+    <string name="log_uploaded">Wysłano %1$s (%2$s)</string>
+    <string name="log_resuming">%1$s: wznawiam od %2$s</string>
+    <string name="log_target_gone">Folder \"%1$s\" zniknął z Drive - wszystkie pliki zostaną wysłane ponownie</string>
+    <string name="log_summary">Synchronizacja: wysłano %1$d, błędy %2$d, czeka %3$d</string>
+    <string name="log_needs_sign_in">Wymagane ponowne połączenie z Google Drive - otwórz aplikację</string>
+    <string name="log_network_error">Błąd sieci: %1$s</string>
+    <string name="log_config_error">Błąd konfiguracji</string>
+    <string name="log_unexpected">Nieoczekiwany błąd: %1$s</string>
+    <string name="err_no_phone_folder">Nie wybrano folderu w telefonie</string>
+    <string name="err_no_drive_folder">Nie ustawiono folderu na Drive</string>
+    <string name="err_session_expired">Sesja wysyłki wygasła, spróbuję ponownie</string>
+    <string name="err_md5_mismatch">Suma MD5 na Drive nie zgadza się z plikiem - wyślę ponownie</string>
+    <string name="err_no_session_url">Brak adresu sesji wysyłki</string>
+    <string name="err_file_shrunk">Plik skrócił się w trakcie wysyłki</string>
+
+    <string name="oauth_enter_client">Wpisz client ID i client secret</string>
+    <string name="oauth_bad_state">Niepoprawna odpowiedź (state)</string>
+    <string name="oauth_no_code">Brak kodu autoryzacji</string>
+    <string name="oauth_no_refresh">Google nie zwrócił refresh tokenu</string>
+    <string name="oauth_timeout">Przekroczono czas logowania</string>
+    <string name="oauth_error">Błąd logowania: %1$s</string>
+    <string name="oauth_page_ok">Połączono z Google Drive</string>
+    <string name="oauth_page_fail">Logowanie nieudane</string>
+    <string name="oauth_page_back">Możesz wrócić do aplikacji.</string>
+</resources>

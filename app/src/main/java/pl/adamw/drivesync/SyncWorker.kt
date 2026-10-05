@@ -50,23 +50,23 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             }.run()
             settings.needsSignIn = false
             if (summary.uploaded > 0 || summary.failed > 0) {
-                db.log("Synchronizacja: wysłano ${summary.uploaded}, błędy ${summary.failed}, czeka ${summary.pending}",
+                db.log(applicationContext.getString(R.string.log_summary, summary.uploaded, summary.failed, summary.pending),
                     error = summary.failed > 0)
             }
             if (summary.failed > 0) Result.retry() else Result.success()
         } catch (e: NeedsSignInException) {
             settings.needsSignIn = true
-            db.log("Wymagane ponowne połączenie z Google Drive - otwórz aplikację", error = true)
+            db.log(applicationContext.getString(R.string.log_needs_sign_in), error = true)
             notifySignIn()
             Result.failure()
         } catch (e: IOException) {
-            db.log("Błąd sieci: ${e.message}", error = true)
+            db.log(applicationContext.getString(R.string.log_network_error, e.message), error = true)
             Result.retry()
         } catch (e: IllegalStateException) {
-            db.log(e.message ?: "Błąd konfiguracji", error = true)
+            db.log(e.message ?: applicationContext.getString(R.string.log_config_error), error = true)
             Result.failure()
         } catch (e: Exception) {
-            db.log("Nieoczekiwany błąd: $e", error = true)  // np. cofnięty dostęp do folderu
+            db.log(applicationContext.getString(R.string.log_unexpected, e.toString()), error = true)  // np. cofnięty dostęp do folderu
             Result.failure()
         }
     }
@@ -75,7 +75,7 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         ensureChannel(applicationContext)
         val n = NotificationCompat.Builder(applicationContext, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_upload)
-            .setContentTitle("Wysyłanie na Google Drive")
+            .setContentTitle(applicationContext.getString(R.string.notif_uploading))
             .setContentText(file)
             .setProgress(100, pct, false)
             .setOngoing(true)
@@ -91,8 +91,8 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         )
         val n = NotificationCompat.Builder(applicationContext, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_notify_error)
-            .setContentTitle("Drive Sync: zaloguj się ponownie")
-            .setContentText("Synchronizacja jest wstrzymana do ponownego połączenia z Google")
+            .setContentTitle(applicationContext.getString(R.string.notif_sign_in_title))
+            .setContentText(applicationContext.getString(R.string.notif_sign_in_text))
             .setContentIntent(open)
             .setAutoCancel(true)
             .build()
@@ -109,7 +109,7 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
 
         private fun ensureChannel(context: Context) {
             context.getSystemService(NotificationManager::class.java).createNotificationChannel(
-                NotificationChannel(CHANNEL, "Synchronizacja", NotificationManager.IMPORTANCE_LOW),
+                NotificationChannel(CHANNEL, context.getString(R.string.channel_sync), NotificationManager.IMPORTANCE_LOW),
             )
         }
 

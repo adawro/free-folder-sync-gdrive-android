@@ -6,7 +6,7 @@ Google Cloud OAuth client.
 
 Made for things like Signal backups: the phone keeps only the newest backups, Drive keeps all of them.
 
-> 🇵🇱 Aplikacja ma na razie interfejs po polsku. / The UI is currently in Polish (English translation planned).
+> 🇬🇧 English and 🇵🇱 Polish UI (follows the phone language).
 
 ## Features
 
@@ -31,7 +31,7 @@ the same way [rclone](https://rclone.org/drive/#making-your-own-client-id) does 
 3. *Google Auth Platform → Branding*: set an app name and your e-mail.
    *Audience*: **External**, then **Publish app** (in *Testing* mode Google revokes the login after 7 days).
 4. *Google Auth Platform → Clients → Create client* → type **Desktop app** → copy the **Client ID** and **Client secret**.
-5. In the app, section **"1. Konto Google"**: paste both and tap **"Zaloguj przez przeglądarkę"** (sign in via browser).
+5. In the app, section **"1. Google account"**: paste both and tap **"Sign in via browser"**.
    Google may warn that the app is unverified - it's your own project, choose *Advanced → Continue*.
 
 How it works: the browser redirects to `http://127.0.0.1:<random port>` on the phone, where the app receives the

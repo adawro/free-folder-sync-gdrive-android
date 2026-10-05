@@ -68,7 +68,7 @@ object CustomOAuth {
         val clientId = settings.customClientId
         val secret = clientSecret(app)
         if (clientId.isEmpty() || secret.isNullOrEmpty()) {
-            onDone("Wpisz client ID i client secret")
+            onDone(context.getString(R.string.oauth_enter_client))
             return
         }
         pending?.cancel()
@@ -94,11 +94,11 @@ object CustomOAuth {
 
         pending = scope.launch {
             val error = try {
-                val params = server.use { receiveRedirect(it) }
+                val params = server.use { receiveRedirect(app, it) }
                 when {
-                    params["state"] != state -> "Niepoprawna odpowiedź (state)"
-                    params["error"] != null -> "Google: ${params["error"]}"
-                    params["code"] == null -> "Brak kodu autoryzacji"
+                    params["state"] != state -> app.getString(R.string.oauth_bad_state)
+                    params["error"] != null -> app.getString(R.string.oauth_google_error, params["error"])
+                    params["code"] == null -> app.getString(R.string.oauth_no_code)
                     else -> {
                         val json = tokenRequest(
                             "grant_type" to "authorization_code", "code" to params["code"]!!,
@@ -106,7 +106,7 @@ object CustomOAuth {
                             "redirect_uri" to redirect, "code_verifier" to verifier,
                         )
                         val refresh = json.optString("refresh_token")
-                        if (refresh.isEmpty()) "Google nie zwrócił refresh tokenu" else {
+                        if (refresh.isEmpty()) app.getString(R.string.oauth_no_refresh) else {
                             SecretStore(app).put(REFRESH_TOKEN, refresh)
                             remember(json)
                             settings.needsSignIn = false
@@ -115,9 +115,9 @@ object CustomOAuth {
                     }
                 }
             } catch (e: SocketTimeoutException) {
-                "Przekroczono czas logowania"
+                app.getString(R.string.oauth_timeout)
             } catch (e: IOException) {
-                "Błąd logowania: ${e.message}"
+                app.getString(R.string.oauth_error, e.message)
             }
             onDone(error)
         }
@@ -125,7 +125,7 @@ object CustomOAuth {
     }
 
     /** Odbiera jedno żądanie GET /?code=...&state=... i odpowiada stroną "wróć do aplikacji". */
-    private fun receiveRedirect(server: ServerSocket): Map<String, String> {
+    private fun receiveRedirect(context: Context, server: ServerSocket): Map<String, String> {
         server.accept().use { socket ->
             val requestLine = socket.getInputStream().bufferedReader().readLine().orEmpty()
             val target = requestLine.split(' ').getOrNull(1).orEmpty()
@@ -133,8 +133,8 @@ object CustomOAuth {
             val ok = uri.getQueryParameter("code") != null
             val html = """<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
                 |</head><body style="font-family:sans-serif;padding:24px">
-                |<h2>${if (ok) "Połączono z Google Drive" else "Logowanie nieudane"}</h2>
-                |<p>Możesz wrócić do aplikacji.</p></body></html>""".trimMargin()
+                |<h2>${context.getString(if (ok) R.string.oauth_page_ok else R.string.oauth_page_fail)}</h2>
+                |<p>${context.getString(R.string.oauth_page_back)}</p></body></html>""".trimMargin()
             val body = html.toByteArray()
             socket.getOutputStream().apply {
                 write("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray())

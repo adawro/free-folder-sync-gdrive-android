@@ -46,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.work.WorkInfo
@@ -89,7 +90,7 @@ private fun Screen() {
     val consent = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
         runCatching { Identity.getAuthorizationClient(context).getAuthorizationResultFromIntent(result.data) }
             .onSuccess { settings.needsSignIn = false; signInError = null; SyncWorker.schedule(context) }
-            .onFailure { signInError = "Nie udało się połączyć: ${it.message}" }
+            .onFailure { signInError = context.getString(R.string.connect_failed, it.message) }
         refresh++
     }
 
@@ -105,7 +106,7 @@ private fun Screen() {
                     refresh++
                 }
             }
-            .onFailure { signInError = "Nie udało się połączyć: ${it.message}" }
+            .onFailure { signInError = context.getString(R.string.connect_failed, it.message) }
     }
 
     val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
@@ -113,7 +114,7 @@ private fun Screen() {
         context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         settings.treeUri = uri
         if (settings.drivePath.isEmpty()) {
-            settings.drivePath = "Telefon/" + (LocalFiles.treeName(context, uri) ?: "folder")
+            settings.drivePath = context.getString(R.string.default_drive_parent) + "/" + (LocalFiles.treeName(context, uri) ?: "folder")
             drivePath = settings.drivePath
         }
         SyncWorker.schedule(context)
@@ -142,23 +143,23 @@ private fun Screen() {
     }
 
     val treeName = remember(refresh) { settings.treeUri?.let { LocalFiles.treeName(context, it) } }
-    val fmt = remember { SimpleDateFormat("dd.MM HH:mm:ss", Locale("pl")) }
+    val fmt = remember { SimpleDateFormat("dd.MM HH:mm:ss", Locale.getDefault()) }
 
     Column(
         Modifier.safeDrawingPadding().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Free Folder Sync", style = MaterialTheme.typography.headlineMedium)
-        Text("Kopiowanie folderu z telefonu na Google Drive (w jedną stronę, nic nie jest usuwane).",
+        Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium)
+        Text(stringResource(R.string.app_subtitle),
             style = MaterialTheme.typography.bodySmall)
 
-        Section("1. Konto Google") {
+        Section(stringResource(R.string.section_account)) {
             val connected = !settings.needsSignIn.also { refresh }
-            Text(if (connected) "Połączono z Google Drive" else "Nie połączono")
+            Text(stringResource(if (connected) R.string.connected else R.string.not_connected))
             signInError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
             if (BuildConfig.BUILTIN_AUTH) {
-                Toggle("Logowanie wbudowane (konto autora)", settings.useBuiltinAuth.also { refresh }) {
+                Toggle(stringResource(R.string.builtin_auth), settings.useBuiltinAuth.also { refresh }) {
                     settings.useBuiltinAuth = it
                     settings.needsSignIn = true
                     signInError = null
@@ -166,20 +167,19 @@ private fun Screen() {
                 }
             }
             if (settings.useBuiltinAuth) {
-                Button(onClick = { signIn() }) { Text(if (connected) "Połącz ponownie" else "Połącz z Google Drive") }
+                Button(onClick = { signIn() }) { Text(stringResource(if (connected) R.string.reconnect else R.string.connect)) }
             } else {
                 Text(
-                    "Własny klient OAuth z Twojego projektu Google Cloud (typ \"Desktop app\", włączone Google Drive API). " +
-                        "Instrukcja w README projektu.",
+                    stringResource(R.string.custom_client_hint),
                     style = MaterialTheme.typography.bodySmall,
                 )
                 OutlinedTextField(
                     value = clientId, onValueChange = { clientId = it },
-                    label = { Text("Client ID") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    label = { Text(stringResource(R.string.client_id)) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
                     value = clientSecret, onValueChange = { clientSecret = it },
-                    label = { Text("Client secret") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    label = { Text(stringResource(R.string.client_secret)) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                     visualTransformation = PasswordVisualTransformation(),
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -194,24 +194,24 @@ private fun Screen() {
                             }
                         },
                         enabled = clientId.isNotBlank() && clientSecret.isNotBlank(),
-                    ) { Text(if (connected) "Zaloguj ponownie" else "Zaloguj przez przeglądarkę") }
+                    ) { Text(stringResource(if (connected) R.string.sign_in_again else R.string.sign_in_browser)) }
                     if (connected) {
-                        OutlinedButton(onClick = { CustomOAuth.signOut(context); refresh++ }) { Text("Wyloguj") }
+                        OutlinedButton(onClick = { CustomOAuth.signOut(context); refresh++ }) { Text(stringResource(R.string.sign_out)) }
                     }
                 }
             }
         }
 
-        Section("2. Folder w telefonie") {
-            Text(treeName ?: "Nie wybrano")
-            OutlinedButton(onClick = { pickFolder.launch(null) }) { Text("Wybierz folder") }
+        Section(stringResource(R.string.section_phone_folder)) {
+            Text(treeName ?: stringResource(R.string.not_selected))
+            OutlinedButton(onClick = { pickFolder.launch(null) }) { Text(stringResource(R.string.choose_folder)) }
         }
 
-        Section("3. Folder na Google Drive") {
+        Section(stringResource(R.string.section_drive_folder)) {
             OutlinedTextField(
                 value = drivePath,
                 onValueChange = { drivePath = it },
-                label = { Text("Ścieżka od \"Mój dysk\"") },
+                label = { Text(stringResource(R.string.drive_path_label)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -221,29 +221,29 @@ private fun Screen() {
                     drivePath = settings.drivePath
                     SyncWorker.schedule(context)
                     refresh++
-                }) { Text("Zapisz") }
+                }) { Text(stringResource(R.string.save)) }
             }
         }
 
-        Section("4. Kiedy wysyłać") {
-            Text("Wysyłaj przez:", style = MaterialTheme.typography.bodyMedium)
-            Toggle("Wi-Fi", settings.allowWifi.also { refresh }) {
+        Section(stringResource(R.string.section_when)) {
+            Text(stringResource(R.string.upload_via), style = MaterialTheme.typography.bodyMedium)
+            Toggle(stringResource(R.string.wifi), settings.allowWifi.also { refresh }) {
                 settings.allowWifi = it
                 if (!it) settings.allowMobile = true  // co najmniej jedna sieć
                 SyncWorker.schedule(context); refresh++
             }
-            Toggle("Dane komórkowe", settings.allowMobile.also { refresh }) {
+            Toggle(stringResource(R.string.mobile_data), settings.allowMobile.also { refresh }) {
                 settings.allowMobile = it
                 if (!it) settings.allowWifi = true
                 SyncWorker.schedule(context); refresh++
             }
-            Toggle("Tylko podczas ładowania", settings.chargingOnly.also { refresh }) {
+            Toggle(stringResource(R.string.charging_only), settings.chargingOnly.also { refresh }) {
                 settings.chargingOnly = it; SyncWorker.schedule(context); refresh++
             }
             val time = settings.syncTimeMinutes.also { refresh }
             val hhmm = "%d:%02d".format(time / 60, time % 60)
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Codziennie o", Modifier.weight(1f))
+                Text(stringResource(R.string.daily_at), Modifier.weight(1f))
                 OutlinedButton(onClick = {
                     TimePickerDialog(context, { _, h, m ->
                         settings.syncTimeMinutes = h * 60 + m
@@ -253,30 +253,29 @@ private fun Screen() {
                 }) { Text(hhmm) }
             }
             Text(
-                "Następna wysyłka: ${fmt.format(SyncWorker.nextRun(settings).time)}. " +
-                    "Jeśli o $hhmm warunki nie są spełnione, wysyłka nastąpi, gdy tylko będą.",
+                stringResource(R.string.next_run, fmt.format(SyncWorker.nextRun(settings).time), hhmm),
                 style = MaterialTheme.typography.bodySmall,
             )
         }
 
-        Section("Stan") {
-            Text("Wysłanych plików: $uploadedCount")
+        Section(stringResource(R.string.section_status)) {
+            Text(stringResource(R.string.uploaded_count, uploadedCount))
             val last = settings.lastSyncAt.also { refresh }
-            Text("Ostatnia synchronizacja: " + if (last > 0) fmt.format(Date(last)) else "jeszcze nie było")
+            Text(stringResource(R.string.last_sync, if (last > 0) fmt.format(Date(last)) else stringResource(R.string.never)))
             if (running != null) {
                 val file = running.progress.getString("file")
                 val pct = running.progress.getInt("pct", 0)
-                Text(if (file != null) "Wysyłanie: $file ($pct%)" else "Sprawdzanie folderu…")
+                Text(if (file != null) stringResource(R.string.uploading_file, file, pct) else stringResource(R.string.scanning))
                 LinearProgressIndicator(progress = { pct / 100f }, modifier = Modifier.fillMaxWidth())
             }
             Button(
                 onClick = { SyncWorker.syncNow(context); refresh++ },
                 enabled = running == null && settings.treeUri != null && !settings.needsSignIn,
-            ) { Text("Synchronizuj teraz") }
+            ) { Text(stringResource(R.string.sync_now)) }
         }
 
-        Section("Dziennik") {
-            if (log.isEmpty()) Text("Pusto", style = MaterialTheme.typography.bodySmall)
+        Section(stringResource(R.string.section_log)) {
+            if (log.isEmpty()) Text(stringResource(R.string.log_empty), style = MaterialTheme.typography.bodySmall)
             log.forEach { e ->
                 Row {
                     Text(fmt.format(Date(e.ts)), style = MaterialTheme.typography.bodySmall, color = Color.Gray)

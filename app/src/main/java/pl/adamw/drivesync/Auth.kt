@@ -8,7 +8,7 @@ import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.common.api.Scope
 import kotlinx.coroutines.tasks.await
 
-class NeedsSignInException : Exception("Wymagane ponowne połączenie z Google Drive")
+class NeedsSignInException : Exception("Google Drive sign-in required")
 
 /**
  * Token dostępu do Drive. Domyślnie własny klient OAuth użytkownika (CustomOAuth); w buildzie autora
