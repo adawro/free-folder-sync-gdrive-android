@@ -26,7 +26,7 @@
     <string name="mobile_data">Dane komórkowe</string>
     <string name="charging_only">Tylko podczas ładowania</string>
     <string name="daily_at">Codziennie o</string>
-    <string name="next_run">Następna wysyłka: %1$s. Jeśli o %2$s warunki nie są spełnione, wysyłka nastąpi, gdy tylko będą.</string>
+    <string name="next_run">Następna wysyłka: %1$s. Jeśli o %2$s nie będzie dozwolonej sieci, wysyłka nastąpi, gdy tylko się pojawi.</string>
 
     <string name="section_status">Stan</string>
     <string name="uploaded_count">Wysłanych plików: %1$d</string>
@@ -67,4 +67,7 @@
     <string name="oauth_page_ok">Połączono z Google Drive</string>
     <string name="oauth_page_fail">Logowanie nieudane</string>
     <string name="oauth_page_back">Możesz wrócić do aplikacji.</string>
+    <string name="exact_alarm_missing">Bez zgody „Alarmy i przypomnienia” Android może opóźnić wysyłkę o kilka godzin (np. do otwarcia aplikacji). Zezwól, żeby wysyłka ruszała dokładnie o %1$s.</string>
+    <string name="exact_alarm_allow">Zezwól na wysyłkę o dokładnej godzinie</string>
+    <string name="notif_checking">Sprawdzanie folderu…</string>
 </resources>

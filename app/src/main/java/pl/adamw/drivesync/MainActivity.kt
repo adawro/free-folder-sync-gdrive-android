@@ -122,22 +122,30 @@ private fun Screen() {
     }
 
     val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
-    LaunchedEffect(Unit) { notifications.launch(Manifest.permission.POST_NOTIFICATIONS) }
+    LaunchedEffect(Unit) {
+        notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+        SyncWorker.schedule(context)  // budzik po aktualizacji z wersji bez budzika
+    }
 
     // Stan zadań WorkManagera (ręczne + okresowe)
     val now by WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow(SyncWorker.NOW).collectAsState(emptyList())
-    val periodic by WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow(SyncWorker.NIGHTLY).collectAsState(emptyList())
+    val periodic by WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow(SyncWorker.SCHEDULED).collectAsState(emptyList())
     val running = (now + periodic).firstOrNull { it.state == WorkInfo.State.RUNNING }
 
     // Log i liczniki z bazy (co 2 s, bo zapisuje je worker)
     var log by remember { mutableStateOf(emptyList<LogEntry>()) }
     var uploadedCount by remember { mutableIntStateOf(0) }
+    var exactAlarms by remember { mutableStateOf(true) }
     LaunchedEffect(refresh) {
         while (true) {
             withContext(Dispatchers.IO) {
                 log = db.recentLog(40)
                 uploadedCount = db.uploadedCount()
             }
+            // Zgodę na dokładne budziki użytkownik zmienia w ustawieniach systemu
+            val exact = SyncWorker.canScheduleExact(context)
+            if (exact && !exactAlarms) SyncWorker.schedule(context)
+            exactAlarms = exact
             delay(2000)
         }
     }
@@ -258,6 +266,15 @@ private fun Screen() {
                 stringResource(R.string.next_run, fmt.format(SyncWorker.nextRun(settings).time), hhmm),
                 style = MaterialTheme.typography.bodySmall,
             )
+            if (!exactAlarms) {
+                Text(stringResource(R.string.exact_alarm_missing, hhmm), color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall)
+                Button(onClick = {
+                    context.startActivity(
+                        Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${context.packageName}"))
+                    )
+                }) { Text(stringResource(R.string.exact_alarm_allow)) }
+            }
         }
 
         Section(stringResource(R.string.section_status)) {

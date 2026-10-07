@@ -35,6 +35,11 @@ class Settings(context: Context) {
         get() = prefs.getInt("sync_time", 3 * 60)
         set(v) = prefs.edit().putInt("sync_time", v).apply()
 
+    /** Czas, na który ustawiony jest budzik codziennej wysyłki (do nadrobienia po wyłączeniu telefonu). */
+    var scheduledAt: Long
+        get() = prefs.getLong("scheduled_at", 0)
+        set(v) = prefs.edit().putLong("scheduled_at", v).apply()
+
     var lastSyncAt: Long
         get() = prefs.getLong("last_sync_at", 0)
         set(v) = prefs.edit().putLong("last_sync_at", v).apply()

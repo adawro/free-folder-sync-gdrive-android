@@ -11,7 +11,8 @@ Made for things like Signal backups: the phone keeps only the newest backups, Dr
 ## Features
 
 - **One-way copy** phone → Drive. Nothing is ever deleted on Drive.
-- **Daily at a time you choose** (default 03:00), plus a "sync now" button.
+- **Daily at a time you choose** (default 03:00), plus a "sync now" button. Uses an exact system alarm, so the upload
+  starts on time even when the phone is idle overnight (Doze) - grant **Alarms & reminders** when the app asks.
 - **Network switches**: Wi-Fi and/or mobile data (never while roaming), optional "only while charging".
   If conditions aren't met at the scheduled time, the upload starts as soon as they are.
 - **Resumable uploads** in 8 MiB chunks - a big file interrupted by a lost connection continues where it stopped.
@@ -70,7 +71,8 @@ builtinAuth=false
 | File | Purpose |
 |---|---|
 | `MainActivity.kt` | UI (Jetpack Compose): account, folders, schedule, status, log |
-| `SyncWorker.kt` | WorkManager job, daily scheduling, notifications |
+| `SyncWorker.kt` | WorkManager job, daily alarm scheduling, notifications |
+| `SyncAlarmReceiver.kt` | daily alarm; re-arms it after reboot, app update and time changes |
 | `SyncEngine.kt` | compares the folder with the local database, uploads, MD5 check |
 | `DriveApi.kt` | minimal Drive API v3 client (OkHttp): folders, resumable upload |
 | `CustomOAuth.kt` | browser sign-in with the user's own OAuth client, token refresh |

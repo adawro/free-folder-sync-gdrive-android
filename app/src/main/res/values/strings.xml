@@ -33,7 +33,7 @@
     <string name="mobile_data">Mobile data</string>
     <string name="charging_only">Only while charging</string>
     <string name="daily_at">Every day at</string>
-    <string name="next_run">Next upload: %1$s. If conditions are not met at %2$s, the upload starts as soon as they are.</string>
+    <string name="next_run">Next upload: %1$s. If there is no allowed network at %2$s, the upload starts as soon as there is one.</string>
 
     <!-- Status -->
     <string name="section_status">Status</string>
@@ -79,4 +79,7 @@
     <string name="oauth_page_ok">Connected to Google Drive</string>
     <string name="oauth_page_fail">Sign-in failed</string>
     <string name="oauth_page_back">You can go back to the app.</string>
+    <string name="exact_alarm_missing">Without the \"Alarms &amp; reminders\" permission Android may delay the upload by several hours (e.g. until you open the app). Allow it so the upload starts exactly at %1$s.</string>
+    <string name="exact_alarm_allow">Allow uploading at the exact time</string>
+    <string name="notif_checking">Checking folder…</string>
 </resources>

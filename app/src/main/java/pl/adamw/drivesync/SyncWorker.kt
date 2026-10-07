@@ -1,11 +1,13 @@
 package pl.adamw.drivesync
 
+import android.app.AlarmManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
@@ -13,6 +15,8 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
@@ -24,12 +28,11 @@ import java.util.concurrent.TimeUnit
 
 class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
-    override suspend fun doWork(): Result {
-        val result = sync()
-        // Nocne zadanie samo planuje następną noc (po retry WorkManager powtórzy to samo zadanie)
-        if (NIGHTLY in tags && result !is Result.Retry) schedule(applicationContext, ExistingWorkPolicy.APPEND_OR_REPLACE)
-        return result
-    }
+    override suspend fun doWork(): Result = sync()
+
+    /** Wymagane dla zadań expedited na Androidzie 10-11 (tam działają jako usługa pierwszoplanowa). */
+    override suspend fun getForegroundInfo(): ForegroundInfo =
+        foregroundInfo(applicationContext.getString(R.string.notif_checking), 0)
 
     private suspend fun sync(): Result = withContext(Dispatchers.IO) {
         val db = Db.get(applicationContext)
@@ -103,7 +106,9 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         private const val CHANNEL = "sync"
         private const val NOTIFY_PROGRESS = 1
         private const val NOTIFY_SIGN_IN = 2
-        const val NIGHTLY = "sync-nightly"
+        /** Wysyłka uruchomiona przez budzik o godzinie z ustawień. */
+        const val SCHEDULED = "sync-scheduled"
+        private const val OLD_NIGHTLY = "sync-nightly"    // wersje 0.2-0.4: opóźnione zadanie WorkManagera
         private const val OLD_PERIODIC = "sync-periodic"  // wersja 0.1: co godzinę
         const val NOW = "sync-now"
 
@@ -126,22 +131,56 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             .build()
 
         /**
-         * Raz na dobę o godzinie z ustawień (jednorazowe zadanie z opóźnieniem do najbliższej takiej godziny,
-         * po wykonaniu planuje kolejne). Gdy o tej godzinie warunki nie są spełnione (np. brak Wi-Fi), wysyłka nastąpi, gdy tylko będą.
-         * Wołane po każdej zmianie ustawień - REPLACE podmienia warunki.
+         * Ustawia budzik na najbliższą godzinę z ustawień (setExactAndAllowWhileIdle - działa także w Doze).
+         * Bez zgody na dokładne budziki: budzik przybliżony (Android może go przesunąć).
+         * Wołane po każdej zmianie ustawień i przy starcie aplikacji - nowy budzik zastępuje poprzedni.
          */
-        fun schedule(context: Context, policy: ExistingWorkPolicy = ExistingWorkPolicy.REPLACE) {
+        fun schedule(context: Context) {
             val wm = WorkManager.getInstance(context)
             wm.cancelUniqueWork(OLD_PERIODIC)
+            // Stare opóźnione zadanie (sprzed budzika) - tylko jeśli jeszcze czeka, nie przerywamy trwającej wysyłki
+            val old = wm.getWorkInfosForUniqueWork(OLD_NIGHTLY)
+            old.addListener({
+                if (runCatching { old.get() }.getOrDefault(emptyList()).any { it.state == WorkInfo.State.ENQUEUED }) {
+                    wm.cancelUniqueWork(OLD_NIGHTLY)
+                }
+            }, Runnable::run)
             val s = Settings(context)
-            if (s.treeUri == null || s.drivePath.isEmpty()) return
-            val request = OneTimeWorkRequestBuilder<SyncWorker>()
-                .setInitialDelay(nextRun(s).timeInMillis - System.currentTimeMillis(), TimeUnit.MILLISECONDS)
+            val alarms = context.getSystemService(AlarmManager::class.java)
+            val pending = alarmIntent(context)
+            if (s.treeUri == null || s.drivePath.isEmpty()) {
+                alarms.cancel(pending)
+                return
+            }
+            val at = nextRun(s).timeInMillis
+            if (canScheduleExact(context)) alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending)
+            else alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending)
+            s.scheduledAt = at
+        }
+
+        /** Android 12+: zgoda „Alarmy i przypomnienia” (na Androidzie 14+ domyślnie wyłączona). */
+        fun canScheduleExact(context: Context): Boolean =
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+                context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
+
+        private fun alarmIntent(context: Context): PendingIntent = PendingIntent.getBroadcast(
+            context, 0,
+            Intent(context, SyncAlarmReceiver::class.java).setAction(SyncAlarmReceiver.ACTION_RUN),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+
+        /**
+         * Wysyłka z budzika: zadanie expedited (system uruchamia je od razu, także w Doze, z dostępem do sieci).
+         * Gdy warunki nie są spełnione (np. brak sieci), czeka i rusza, gdy tylko będą.
+         */
+        fun runScheduled(context: Context) {
+            val s = Settings(context)
+            val builder = OneTimeWorkRequestBuilder<SyncWorker>()
                 .setConstraints(constraints(s))
                 .setBackoffCriteria(androidx.work.BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES)
-                .addTag(NIGHTLY)
-                .build()
-            wm.enqueueUniqueWork(NIGHTLY, policy, request)
+            // Zadania expedited mogą wymagać tylko sieci - przy „tylko podczas ładowania” zwykłe zadanie
+            if (!s.chargingOnly) builder.setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            WorkManager.getInstance(context).enqueueUniqueWork(SCHEDULED, ExistingWorkPolicy.KEEP, builder.build())
         }
 
         fun nextRun(s: Settings): Calendar = Calendar.getInstance().apply {
