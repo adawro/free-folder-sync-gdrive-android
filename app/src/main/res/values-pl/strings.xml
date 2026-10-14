@@ -30,7 +30,7 @@
 
     <string name="section_status">Stan</string>
     <string name="uploaded_count">Wysłanych plików: %1$d</string>
-    <string name="last_sync">Ostatnia synchronizacja: %1$s</string>
+    <string name="last_sync">Ostatnia udana synchronizacja: %1$s</string>
     <string name="never">jeszcze nie było</string>
     <string name="uploading_file">Wysyłanie: %1$s (%2$d%%)</string>
     <string name="scanning">Sprawdzanie folderu…</string>
@@ -70,4 +70,18 @@
     <string name="exact_alarm_missing">Bez zgody „Alarmy i przypomnienia” Android może opóźnić wysyłkę o kilka godzin (np. do otwarcia aplikacji). Zezwól, żeby wysyłka ruszała dokładnie o %1$s.</string>
     <string name="exact_alarm_allow">Zezwól na wysyłkę o dokładnej godzinie</string>
     <string name="notif_checking">Sprawdzanie folderu…</string>
+    <string name="log_rate_limited">Osiągnięto limit zapytań Google Drive, ponowię później: %1$s</string>
+    <string name="log_alarm">Start zaplanowanej synchronizacji</string>
+    <string name="err_upload_stalled">Drive nie przyjmuje danych, ponowię później</string>
+    <string name="battery_missing">Optymalizacja baterii jest włączona: w nocy Android może odciąć aplikacji internet („Unable to resolve host”) i wysyłka czeka godzinami.</string>
+    <string name="battery_allow">Zezwól na działanie w tle</string>
+    <string name="data_saver_missing">Oszczędzanie danych blokuje tę aplikację w tle na danych komórkowych.</string>
+    <string name="data_saver_allow">Zezwól na dane w tle</string>
+    <string name="pending_count">Jeszcze nie na Drive: %1$d plików</string>
+    <string name="last_attempt_failed">Ostatnia próba %1$s nieudana: %2$s</string>
+    <string name="log_requests">" (zapytań do Google: %1$d)"</string>
+    <string name="retry_at">Kolejna automatyczna próba: %1$s</string>
+    <string name="log_copy">Kopiuj dziennik</string>
+    <string name="log_copied">Dziennik skopiowany do schowka</string>
+    <string name="log_already_there">Już były na Drive (powiązane bez wysyłania): %1$d plików</string>
 </resources>

@@ -7,7 +7,7 @@ import java.io.FileInputStream
 import java.io.IOException
 import java.security.MessageDigest
 
-data class SyncSummary(val uploaded: Int, val failed: Int, val pending: Int)
+data class SyncSummary(val uploaded: Int, val failed: Int, val pending: Int, val alreadyThere: Int = 0)
 
 /**
  * Kopiowanie w jedną stronę: telefon -> Drive. Nic nie jest usuwane na Drive.
@@ -21,6 +21,7 @@ class SyncEngine(
     private val db = Db.get(context)
     private val settings = Settings(context)
     private val drive = DriveApi(context)
+    val requests: Int get() = drive.requests
 
     suspend fun run(): SyncSummary = lock.withLock {
         val tree = settings.treeUri ?: throw IllegalStateException(context.getString(R.string.err_no_phone_folder))
@@ -34,24 +35,33 @@ class SyncEngine(
         }
         // Plik jeszcze zapisywany (np. Signal tworzy kopię) - poczekaj, aż przestanie się zmieniać
         val ready = todo.filter { now - it.mtime > STABLE_MS }
-        if (ready.isEmpty()) return SyncSummary(0, 0, todo.size)
+        if (ready.isEmpty()) {
+            if (todo.isEmpty()) settings.lastSyncAt = now
+            return SyncSummary(0, 0, todo.size)
+        }
 
         checkTargetStillExists(target)
         var uploaded = 0
         var failed = 0
+        var alreadyThere = 0
         for (f in ready) {
             try {
-                uploadFile(f, target)
-                uploaded++
+                if (uploadFile(f, target)) uploaded++ else alreadyThere++
             } catch (e: NeedsSignInException) {
                 throw e
+            } catch (e: DriveException) {
+                // Limit Google: kolejne pliki dostałyby ten sam błąd - przerwij, worker ponowi później
+                if (e.isRateLimit) throw e
+                failed++
+                db.log("${f.path}: ${e.message}", error = true)
             } catch (e: IOException) {
                 failed++
                 db.log("${f.path}: ${e.message}", error = true)
             }
         }
-        settings.lastSyncAt = System.currentTimeMillis()
-        return SyncSummary(uploaded, failed, todo.size - ready.size + failed)
+        // Tylko gdy wszystko się udało - inaczej ekran pokazywałby świeżą synchronizację mimo błędów
+        if (failed == 0) settings.lastSyncAt = System.currentTimeMillis()
+        return SyncSummary(uploaded, failed, todo.size - ready.size + failed, alreadyThere)
     }
 
     /** Ktoś usunął folder docelowy na Drive -> zapominamy stan i wysyłamy wszystko ponownie. */
@@ -75,17 +85,35 @@ class SyncEngine(
         return id
     }
 
-    private suspend fun uploadFile(f: LocalFile, target: String) {
+    /** Zwraca false, gdy identyczny plik już był na Drive (powiązany bez wysyłania). */
+    private suspend fun uploadFile(f: LocalFile, target: String): Boolean {
         val record = db.file(f.path)
         val dir = (target + "/" + f.path).substringBeforeLast('/')
         val parent = folderId(dir)
         val name = f.path.substringAfterLast('/')
 
+        // Pliku nie ma w bazie (np. po reinstalacji), a na Drive leży identyczny - nie wysyłaj duplikatu
+        if (record?.driveId == null && record?.sessionUri == null) {
+            val same = drive.findFiles(name, parent).filter { it.size == f.size && it.md5 != null }
+            if (same.isNotEmpty()) {
+                val localMd5 = md5(f)
+                same.firstOrNull { it.md5.equals(localMd5, ignoreCase = true) }?.let {
+                    db.saveFile(FileRecord(f.path, f.size, f.mtime, it.id, localMd5, System.currentTimeMillis(), null, 0, 0))
+                    return false
+                }
+            }
+        }
+
         // Wznowienie sesji tylko dla dokładnie tej samej wersji pliku
         var session = record?.sessionUri?.takeIf { record.sessionSize == f.size && record.sessionMtime == f.mtime }
         var state: UploadState = UploadState.Partial(0)
         if (session != null) {
-            state = drive.queryUpload(session, f.size)
+            // Sesja, na którą Google odpowiada błędem (np. 403), blokowałaby plik na zawsze - zacznij nową
+            state = try {
+                drive.queryUpload(session, f.size)
+            } catch (e: DriveException) {
+                UploadState.Expired
+            }
             if (state is UploadState.Expired) session = null
             else if (state is UploadState.Partial && state.offset > 0) db.log(context.getString(R.string.log_resuming, f.path, mb(state.offset)))
         }
@@ -99,10 +127,22 @@ class SyncEngine(
             )
         }
 
+        var stalled = 0
         while (state is UploadState.Partial) {
             onProgress(f.path, state.offset, f.size)
-            state = drive.uploadChunk(session, f.uri, state.offset, f.size, CHUNK)
+            val before = state.offset
+            state = try {
+                drive.uploadChunk(session, f.uri, state.offset, f.size, CHUNK)
+            } catch (e: DriveException) {
+                // Odrzucona sesja: zapomnij ją, następna próba zacznie od nowej
+                db.saveFile((db.file(f.path) ?: FileRecord(f.path, 0, 0, null, null, 0, null, 0, 0)).copy(sessionUri = null))
+                throw e
+            }
             if (state is UploadState.Expired) throw IOException(context.getString(R.string.err_session_expired))
+            // Serwer nie przyjmuje danych - nie wysyłaj w kółko tego samego fragmentu
+            if (state is UploadState.Partial && state.offset <= before && ++stalled >= 3) {
+                throw IOException(context.getString(R.string.err_upload_stalled))
+            }
         }
         val done = (state as UploadState.Done).file
         onProgress(f.path, f.size, f.size)
@@ -114,6 +154,7 @@ class SyncEngine(
         }
         db.saveFile(FileRecord(f.path, f.size, f.mtime, done.id, localMd5, System.currentTimeMillis(), null, 0, 0))
         db.log(context.getString(R.string.log_uploaded, f.path, mb(f.size)))
+        return true
     }
 
     private fun md5(f: LocalFile): String {

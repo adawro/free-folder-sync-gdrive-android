@@ -19,6 +19,10 @@ Made for things like Signal backups: the phone keeps only the newest backups, Dr
 - **MD5 verification** of every uploaded file.
 - Changed file → **new revision** of the same Drive file (no duplicates).
 - Files modified in the last 2 minutes are skipped (e.g. a backup still being written).
+- Files already on Drive (same name, size and MD5 - e.g. after reinstalling the app) are linked, not uploaded again.
+- Google rate limits (403/429), server errors and short network/DNS outages are retried with exponential backoff.
+- Warns when battery optimisation or Data Saver can cut the app off from the network at night.
+- Status shows the last error and files still waiting; the log can be copied to the clipboard.
 - Folder chosen with the system picker (Storage Access Framework) - no "all files" permission.
 - Minimal Drive scope **`drive.file`**: the app can only see files and folders it created.
 

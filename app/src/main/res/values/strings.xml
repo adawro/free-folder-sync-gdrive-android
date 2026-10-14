@@ -38,7 +38,7 @@
     <!-- Status -->
     <string name="section_status">Status</string>
     <string name="uploaded_count">Uploaded files: %1$d</string>
-    <string name="last_sync">Last sync: %1$s</string>
+    <string name="last_sync">Last successful sync: %1$s</string>
     <string name="never">not yet</string>
     <string name="uploading_file">Uploading: %1$s (%2$d%%)</string>
     <string name="scanning">Checking folder…</string>
@@ -82,4 +82,18 @@
     <string name="exact_alarm_missing">Without the \"Alarms &amp; reminders\" permission Android may delay the upload by several hours (e.g. until you open the app). Allow it so the upload starts exactly at %1$s.</string>
     <string name="exact_alarm_allow">Allow uploading at the exact time</string>
     <string name="notif_checking">Checking folder…</string>
+    <string name="log_rate_limited">Google Drive request limit reached, will retry later: %1$s</string>
+    <string name="log_alarm">Scheduled sync started</string>
+    <string name="err_upload_stalled">Drive does not accept the data, will retry</string>
+    <string name="battery_missing">Battery optimisation is on: at night Android may cut the app off from the internet (\"Unable to resolve host\") and the upload waits for hours.</string>
+    <string name="battery_allow">Allow running in the background</string>
+    <string name="data_saver_missing">Data Saver blocks this app in the background on mobile data.</string>
+    <string name="data_saver_allow">Allow background data</string>
+    <string name="pending_count">Not on Drive yet: %1$d files</string>
+    <string name="last_attempt_failed">Last attempt %1$s failed: %2$s</string>
+    <string name="log_requests">" (requests to Google: %1$d)"</string>
+    <string name="retry_at">Next automatic retry: %1$s</string>
+    <string name="log_copy">Copy log</string>
+    <string name="log_copied">Log copied to clipboard</string>
+    <string name="log_already_there">Already on Drive (linked without uploading): %1$d files</string>
 </resources>

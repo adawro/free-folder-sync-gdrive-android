@@ -35,42 +35,65 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         foregroundInfo(applicationContext.getString(R.string.notif_checking), 0)
 
     private suspend fun sync(): Result = withContext(Dispatchers.IO) {
-        val db = Db.get(applicationContext)
         val settings = Settings(applicationContext)
+        settings.lastAttemptAt = System.currentTimeMillis()
+        val (result, error) = runSync(settings)
+        settings.lastError = error  // do pokazania na ekranie stanu (null = udało się)
+        result
+    }
+
+    private suspend fun runSync(settings: Settings): Pair<Result, String?> {
+        val db = Db.get(applicationContext)
         var foreground = false
         var lastNotify = 0L
+        val engine = SyncEngine(applicationContext) { file, sent, total ->
+            val now = System.currentTimeMillis()
+            if (!foreground || now - lastNotify > 1000 || sent == total) {
+                lastNotify = now
+                val pct = if (total > 0) (sent * 100 / total).toInt() else 100
+                setProgress(workDataOf("file" to file, "pct" to pct))
+                // Usługa pierwszoplanowa dopiero, gdy jest co wysłać (inaczej powiadomienie przy każdym sprawdzeniu)
+                runCatching { setForeground(foregroundInfo(file, pct)) }
+                foreground = true
+            }
+        }
         try {
-            val summary = SyncEngine(applicationContext) { file, sent, total ->
-                val now = System.currentTimeMillis()
-                if (!foreground || now - lastNotify > 1000 || sent == total) {
-                    lastNotify = now
-                    val pct = if (total > 0) (sent * 100 / total).toInt() else 100
-                    setProgress(workDataOf("file" to file, "pct" to pct))
-                    // Usługa pierwszoplanowa dopiero, gdy jest co wysłać (inaczej powiadomienie przy każdym sprawdzeniu)
-                    runCatching { setForeground(foregroundInfo(file, pct)) }
-                    foreground = true
-                }
-            }.run()
+            val summary = engine.run()
             settings.needsSignIn = false
             if (summary.uploaded > 0 || summary.failed > 0) {
-                db.log(applicationContext.getString(R.string.log_summary, summary.uploaded, summary.failed, summary.pending),
-                    error = summary.failed > 0)
+                db.log(applicationContext.getString(R.string.log_summary, summary.uploaded, summary.failed, summary.pending) +
+                    applicationContext.getString(R.string.log_requests, engine.requests), error = summary.failed > 0)
             }
-            if (summary.failed > 0) Result.retry() else Result.success()
+            if (summary.alreadyThere > 0) db.log(applicationContext.getString(R.string.log_already_there, summary.alreadyThere))
+            settings.pendingCount = summary.pending
+            return if (summary.failed > 0) {
+                Result.retry() to applicationContext.getString(R.string.log_summary, summary.uploaded, summary.failed, summary.pending)
+            } else {
+                Result.success() to null
+            }
         } catch (e: NeedsSignInException) {
             settings.needsSignIn = true
-            db.log(applicationContext.getString(R.string.log_needs_sign_in), error = true)
+            val msg = applicationContext.getString(R.string.log_needs_sign_in)
+            db.log(msg, error = true)
             notifySignIn()
-            Result.failure()
+            return Result.failure() to msg
+        } catch (e: DriveException) {
+            val msg = applicationContext.getString(if (e.isRateLimit) R.string.log_rate_limited else R.string.log_network_error, e.message) +
+                applicationContext.getString(R.string.log_requests, engine.requests)
+            db.log(msg, error = true)
+            return Result.retry() to msg
         } catch (e: IOException) {
-            db.log(applicationContext.getString(R.string.log_network_error, e.message), error = true)
-            Result.retry()
+            val msg = applicationContext.getString(R.string.log_network_error, e.message)
+            db.log(msg, error = true)
+            return Result.retry() to msg
         } catch (e: IllegalStateException) {
-            db.log(e.message ?: applicationContext.getString(R.string.log_config_error), error = true)
-            Result.failure()
+            val msg = e.message ?: applicationContext.getString(R.string.log_config_error)
+            db.log(msg, error = true)
+            return Result.failure() to msg
         } catch (e: Exception) {
-            db.log(applicationContext.getString(R.string.log_unexpected, e.toString()), error = true)  // np. cofnięty dostęp do folderu
-            Result.failure()
+            val msg = applicationContext.getString(R.string.log_unexpected, e.toString())  // np. cofnięty dostęp do folderu
+            db.log(msg, error = true)
+            return Result.failure() to msg
         }
     }
 
@@ -190,7 +213,11 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             if (timeInMillis <= System.currentTimeMillis() + 60_000) add(Calendar.DAY_OF_MONTH, 1)
         }
 
-        /** Ręcznie z przycisku: tylko wymóg sieci (zgodny z ustawieniami), bez wymogu ładowania. */
+        /**
+         * Ręcznie z przycisku: tylko wymóg sieci (zgodny z ustawieniami), bez wymogu ładowania.
+         * REPLACE: poprzednia ręczna próba po błędzie czeka na ponowienie (nawet godzinami) - KEEP ignorowałby kliknięcie.
+         * Trwającej wysyłki to nie przerywa, bo przycisk jest wtedy wyłączony.
+         */
         fun syncNow(context: Context) {
             val s = Settings(context)
             val request = OneTimeWorkRequestBuilder<SyncWorker>()
@@ -200,7 +227,7 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
                         .build()
                 )
                 .build()
-            WorkManager.getInstance(context).enqueueUniqueWork(NOW, ExistingWorkPolicy.KEEP, request)
+            WorkManager.getInstance(context).enqueueUniqueWork(NOW, ExistingWorkPolicy.REPLACE, request)
         }
     }
 }

@@ -16,9 +16,18 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.FileInputStream
 import java.io.IOException
+import java.net.ConnectException
+import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
+import kotlin.random.Random
 
-class DriveException(val code: Int, message: String) : IOException("Drive HTTP $code: $message")
+class DriveException(val code: Int, message: String) : IOException("Drive HTTP $code: $message") {
+    /** Limit zapytań Google (403 userRateLimitExceeded/rateLimitExceeded albo 429) - nie ma sensu ponawiać od razu. */
+    val isRateLimit: Boolean = code == 429 || (code == 403 && RATE_LIMIT.containsMatchIn(message))
+}
+
+/** "userRateLimitExceeded", "rateLimitExceeded" albo w treści "User rate limit exceeded". */
+private val RATE_LIMIT = Regex("rate ?limit ?exceeded", RegexOption.IGNORE_CASE)
 
 /** Plik po zakończonej wysyłce (pola z odpowiedzi Drive). */
 data class DriveFile(val id: String, val md5: String?, val size: Long)
@@ -38,25 +47,55 @@ class DriveApi(private val context: Context) {
         .writeTimeout(120, TimeUnit.SECONDS)
         .build()
     private var token: String? = null
+    /** Liczba żądań HTTP do Google w tej próbie (do dziennika - diagnostyka limitów). */
+    var requests = 0
+        private set
 
     private fun currentToken(): String = token ?: runBlocking { Auth.token(context) }.also { token = it }
 
-    /** Wykonuje żądanie z tokenem; po 401 raz odświeża token. Wywołujący zamyka Response. */
+    /**
+     * Wykonuje żądanie z tokenem; po 401 raz odświeża token. Limit zapytań (403 rate limit, 429) i błędy serwera (5xx)
+     * ponawia z wykładniczym odstępem (1, 2, 4, 8, 16, 32 s) - tak zaleca Google. Tak samo brak DNS i nieudane
+     * połączenie. Wywołujący zamyka Response.
+     */
     private fun call(build: Request.Builder.() -> Unit): Response {
-        repeat(2) { attempt ->
+        var refreshed = false
+        var attempt = 0
+        while (true) {
             val t = currentToken()
-            val response = http.newCall(Request.Builder().apply(build).header("Authorization", "Bearer $t").build()).execute()
-            if (response.code != 401 || attempt == 1) return response
+            requests++
+            val response = try {
+                http.newCall(Request.Builder().apply(build).header("Authorization", "Bearer $t").build()).execute()
+            } catch (e: IOException) {
+                // Chwilowy brak DNS/połączenia (np. telefon dopiero się wybudził) - żądanie nie wyszło, można ponowić
+                if ((e !is UnknownHostException && e !is ConnectException) || attempt >= MAX_RETRIES) throw e
+                Thread.sleep((1000L shl attempt) + Random.nextLong(1000))
+                attempt++
+                continue
+            }
+            if (response.code == 401 && !refreshed) {
+                response.close()
+                Auth.invalidate(context, t)
+                token = null
+                refreshed = true
+                continue
+            }
+            if (!isTransient(response) || attempt >= MAX_RETRIES) return response
             response.close()
-            Auth.invalidate(context, t)
-            token = null
+            Thread.sleep((1000L shl attempt) + Random.nextLong(1000))
+            attempt++
         }
-        error("unreachable")
+    }
+
+    private fun isTransient(r: Response): Boolean = when (r.code) {
+        429, 500, 502, 503, 504 -> true
+        403 -> RATE_LIMIT.containsMatchIn(r.peekBody(4096).string())
+        else -> false
     }
 
     private fun Response.jsonOrThrow(): JSONObject = use {
         val body = it.body?.string().orEmpty()
-        if (!it.isSuccessful) throw DriveException(it.code, body.take(300))
+        if (!it.isSuccessful) throw DriveException(it.code, body.take(1500))
         JSONObject(body)
     }
 
@@ -74,6 +113,22 @@ class DriveApi(private val context: Context) {
         return if (files.length() > 0) files.getJSONObject(0).getString("id") else null
     }
 
+    /** Pliki (nie foldery) o tej nazwie w folderze - do rozpoznania plików wysłanych wcześniej (np. przed reinstalacją). */
+    fun findFiles(name: String, parentId: String): List<DriveFile> {
+        val q = "name = '${name.replace("\\", "\\\\").replace("'", "\\'")}' and '$parentId' in parents " +
+            "and mimeType != '$FOLDER_MIME' and trashed = false"
+        val url = "$API/files".toHttpUrl().newBuilder()
+            .addQueryParameter("q", q)
+            .addQueryParameter("fields", "files($FILE_FIELDS)")
+            .addQueryParameter("spaces", "drive")
+            .build()
+        val files: JSONArray = call { url(url) }.jsonOrThrow().getJSONArray("files")
+        return (0 until files.length()).map { i ->
+            val j = files.getJSONObject(i)
+            DriveFile(j.getString("id"), j.optString("md5Checksum").ifEmpty { null }, j.optLong("size"))
+        }
+    }
+
     fun createFolder(name: String, parentId: String): String {
         val meta = JSONObject().put("name", name).put("mimeType", FOLDER_MIME).put("parents", JSONArray().put(parentId))
         return call { url("$API/files?fields=id"); post(meta.toString().toRequestBody(JSON)) }
@@ -84,7 +139,7 @@ class DriveApi(private val context: Context) {
     fun exists(id: String): Boolean = call { url("$API/files/$id?fields=id,trashed") }.use {
         when {
             it.code == 404 -> false
-            !it.isSuccessful -> throw DriveException(it.code, it.body?.string().orEmpty().take(300))
+            !it.isSuccessful -> throw DriveException(it.code, it.body?.string().orEmpty().take(1500))
             else -> !JSONObject(it.body!!.string()).optBoolean("trashed")
         }
     }
@@ -114,7 +169,7 @@ class DriveApi(private val context: Context) {
         }
         response.use {
             if (existingId != null && it.code == 404) return null
-            if (!it.isSuccessful) throw DriveException(it.code, it.body?.string().orEmpty().take(300))
+            if (!it.isSuccessful) throw DriveException(it.code, it.body?.string().orEmpty().take(1500))
             return it.header("Location") ?: throw IOException(context.getString(R.string.err_no_session_url))
         }
     }
@@ -161,13 +216,14 @@ class DriveApi(private val context: Context) {
             UploadState.Done(DriveFile(j.getString("id"), j.optString("md5Checksum").ifEmpty { null }, j.optLong("size")))
         }
         r.code == 404 || r.code == 410 -> UploadState.Expired
-        else -> throw DriveException(r.code, r.body?.string().orEmpty().take(300))
+        else -> throw DriveException(r.code, r.body?.string().orEmpty().take(1500))
     }
 
     companion object {
         private const val API = "https://www.googleapis.com/drive/v3"
         private const val UPLOAD = "https://www.googleapis.com/upload/drive/v3"
         private const val FILE_FIELDS = "id,md5Checksum,size"
+        private const val MAX_RETRIES = 6
         const val FOLDER_MIME = "application/vnd.google-apps.folder"
         private val JSON = "application/json; charset=UTF-8".toMediaType()
     }

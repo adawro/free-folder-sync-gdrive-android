@@ -2,9 +2,14 @@ package pl.adamw.drivesync
 
 import android.Manifest
 import android.app.TimePickerDialog
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
+import android.net.ConnectivityManager
 import android.net.Uri
+import android.os.PowerManager
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -131,21 +136,32 @@ private fun Screen() {
     val now by WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow(SyncWorker.NOW).collectAsState(emptyList())
     val periodic by WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow(SyncWorker.SCHEDULED).collectAsState(emptyList())
     val running = (now + periodic).firstOrNull { it.state == WorkInfo.State.RUNNING }
+    // Po błędzie zadanie czeka w kolejce na ponowienie (Result.retry)
+    val retryAt = (now + periodic).filter { it.state == WorkInfo.State.ENQUEUED && it.runAttemptCount > 0 }
+        .minOfOrNull { it.nextScheduleTimeMillis }
 
     // Log i liczniki z bazy (co 2 s, bo zapisuje je worker)
     var log by remember { mutableStateOf(emptyList<LogEntry>()) }
     var uploadedCount by remember { mutableIntStateOf(0) }
     var exactAlarms by remember { mutableStateOf(true) }
+    var status by remember { mutableIntStateOf(0) }  // zmiana = ponowny odczyt stanu ostatniej próby
+    var batteryOk by remember { mutableStateOf(true) }
+    var dataSaverOk by remember { mutableStateOf(true) }
     LaunchedEffect(refresh) {
         while (true) {
             withContext(Dispatchers.IO) {
                 log = db.recentLog(40)
                 uploadedCount = db.uploadedCount()
             }
+            status = (settings.lastAttemptAt xor settings.lastSyncAt).hashCode() + (settings.lastError?.hashCode() ?: 0)
             // Zgodę na dokładne budziki użytkownik zmienia w ustawieniach systemu
             val exact = SyncWorker.canScheduleExact(context)
             if (exact && !exactAlarms) SyncWorker.schedule(context)
             exactAlarms = exact
+            // Bez tych zgód Android w nocy odcina aplikacji sieć ("Unable to resolve host www.googleapis.com")
+            batteryOk = context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
+            dataSaverOk = context.getSystemService(ConnectivityManager::class.java).restrictBackgroundStatus !=
+                ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED
             delay(2000)
         }
     }
@@ -275,12 +291,40 @@ private fun Screen() {
                     )
                 }) { Text(stringResource(R.string.exact_alarm_allow)) }
             }
+            if (!batteryOk) {
+                Text(stringResource(R.string.battery_missing), color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall)
+                Button(onClick = {
+                    context.startActivity(
+                        Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}"))
+                    )
+                }) { Text(stringResource(R.string.battery_allow)) }
+            }
+            if (!dataSaverOk) {
+                Text(stringResource(R.string.data_saver_missing), color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall)
+                Button(onClick = {
+                    context.startActivity(
+                        Intent(android.provider.Settings.ACTION_IGNORE_BACKGROUND_DATA_RESTRICTIONS_SETTINGS, Uri.parse("package:${context.packageName}"))
+                    )
+                }) { Text(stringResource(R.string.data_saver_allow)) }
+            }
         }
 
         Section(stringResource(R.string.section_status)) {
             Text(stringResource(R.string.uploaded_count, uploadedCount))
-            val last = settings.lastSyncAt.also { refresh }
+            val last = settings.lastSyncAt.also { refresh; status }
             Text(stringResource(R.string.last_sync, if (last > 0) fmt.format(Date(last)) else stringResource(R.string.never)))
+            val pending = settings.pendingCount
+            if (pending > 0) Text(stringResource(R.string.pending_count, pending), color = MaterialTheme.colorScheme.error)
+            val error = settings.lastError
+            if (error != null && running == null) {
+                Text(stringResource(R.string.last_attempt_failed, fmt.format(Date(settings.lastAttemptAt)), error),
+                    color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+            if (running == null && retryAt != null && retryAt != Long.MAX_VALUE) {
+                Text(stringResource(R.string.retry_at, fmt.format(Date(retryAt))), style = MaterialTheme.typography.bodySmall)
+            }
             if (running != null) {
                 val file = running.progress.getString("file")
                 val pct = running.progress.getInt("pct", 0)
@@ -295,6 +339,13 @@ private fun Screen() {
 
         Section(stringResource(R.string.section_log)) {
             if (log.isEmpty()) Text(stringResource(R.string.log_empty), style = MaterialTheme.typography.bodySmall)
+            else OutlinedButton(onClick = {
+                // Cały dziennik do schowka (np. żeby wkleić treść błędu z Google)
+                val text = log.joinToString("\n") { (if (it.error) "! " else "") + fmt.format(Date(it.ts)) + "  " + it.message }
+                context.getSystemService(ClipboardManager::class.java)
+                    .setPrimaryClip(ClipData.newPlainText(context.getString(R.string.section_log), text))
+                Toast.makeText(context, R.string.log_copied, Toast.LENGTH_SHORT).show()
+            }) { Text(stringResource(R.string.log_copy)) }
             log.forEach { e ->
                 Row {
                     Text(fmt.format(Date(e.ts)), style = MaterialTheme.typography.bodySmall, color = Color.Gray)

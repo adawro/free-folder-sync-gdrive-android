@@ -40,9 +40,24 @@ class Settings(context: Context) {
         get() = prefs.getLong("scheduled_at", 0)
         set(v) = prefs.edit().putLong("scheduled_at", v).apply()
 
+    /** Ostatnia synchronizacja bez błędów (wszystkie gotowe pliki są na Drive). */
     var lastSyncAt: Long
         get() = prefs.getLong("last_sync_at", 0)
         set(v) = prefs.edit().putLong("last_sync_at", v).apply()
+
+    /** Ostatnia próba (udana lub nie) i jej błąd - null, gdy się udała. */
+    var lastAttemptAt: Long
+        get() = prefs.getLong("last_attempt_at", 0)
+        set(v) = prefs.edit().putLong("last_attempt_at", v).apply()
+
+    var lastError: String?
+        get() = prefs.getString("last_error", null)
+        set(v) = prefs.edit().putString("last_error", v).apply()
+
+    /** Ile plików z folderu w telefonie nie ma jeszcze na Drive (stan po ostatniej próbie, -1 = nieznany). */
+    var pendingCount: Int
+        get() = prefs.getInt("pending_count", -1)
+        set(v) = prefs.edit().putInt("pending_count", v).apply()
 
     /**
      * Logowanie przez Google Play Services i klienta OAuth autora (tylko w buildzie z builtinAuth=true

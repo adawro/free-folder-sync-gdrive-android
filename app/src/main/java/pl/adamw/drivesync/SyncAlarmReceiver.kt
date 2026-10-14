@@ -13,6 +13,8 @@ class SyncAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
             ACTION_RUN -> {
+                // Ślad w dzienniku, że budzik zadziałał (także gdy nie ma nic nowego do wysłania)
+                Db.get(context).log(context.getString(R.string.log_alarm))
                 SyncWorker.runScheduled(context)
                 SyncWorker.schedule(context)  // następny dzień
             }

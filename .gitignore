@@ -4,3 +4,4 @@ local.properties
 keys/*.jks
 keys/*.keystore
 *.apk
+.kotlin/
