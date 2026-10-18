@@ -72,6 +72,20 @@ class Settings(context: Context) {
         get() = prefs.getString("custom_client_id", "")!!
         set(v) = prefs.edit().putString("custom_client_id", v).apply()
 
+    /** Adres statusu backupu serwera (ServerStatus); pusty = sekcja wyłączona. */
+    var serverStatusUrl: String
+        get() = prefs.getString("server_status_url", "")!!
+        set(v) = prefs.edit().putString("server_status_url", v.trim()).apply()
+
+    /** Ostatnia odpowiedź serwera i kiedy przyszła - pokazywane, gdy serwer jest nieosiągalny. */
+    var serverStatusJson: String?
+        get() = prefs.getString("server_status_json", null)
+        set(v) = prefs.edit().putString("server_status_json", v).apply()
+
+    var serverStatusAt: Long
+        get() = prefs.getLong("server_status_at", 0)
+        set(v) = prefs.edit().putLong("server_status_at", v).apply()
+
     /** Ustawiane, gdy synchronizacja w tle wymaga ponownego zalogowania do Google. */
     var needsSignIn: Boolean
         get() = prefs.getBoolean("needs_sign_in", true)

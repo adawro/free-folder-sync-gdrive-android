@@ -9,6 +9,7 @@ import android.net.ConnectivityManager
 import android.net.Uri
 import android.os.PowerManager
 import android.os.Bundle
+import android.text.format.DateUtils
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -163,6 +164,27 @@ private fun Screen() {
             dataSaverOk = context.getSystemService(ConnectivityManager::class.java).restrictBackgroundStatus !=
                 ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED
             delay(2000)
+        }
+    }
+
+    // Status backupu serwera: przy otwarciu, co minutę póki aplikacja jest na ekranie
+    // i na żądanie. Nieosiągalny serwer (np. bez VPN) to "brak danych", nie błąd.
+    var serverUrl by remember { mutableStateOf(settings.serverStatusUrl) }
+    var serverReachable by remember { mutableStateOf<Boolean?>(null) }  // null = jeszcze nie sprawdzono
+    var serverCheck by remember { mutableIntStateOf(0) }
+    LaunchedEffect(serverCheck) {
+        while (true) {
+            val url = settings.serverStatusUrl
+            if (url.isNotEmpty()) {
+                runCatching { ServerStatus.fetch(url) }
+                    .onSuccess {
+                        settings.serverStatusJson = it
+                        settings.serverStatusAt = System.currentTimeMillis()
+                        serverReachable = true
+                    }
+                    .onFailure { serverReachable = false }
+            }
+            delay(60_000)
         }
     }
 
@@ -335,6 +357,61 @@ private fun Screen() {
                 onClick = { SyncWorker.syncNow(context); refresh++ },
                 enabled = running == null && settings.treeUri != null && !settings.needsSignIn,
             ) { Text(stringResource(R.string.sync_now)) }
+        }
+
+        Section(stringResource(R.string.section_server)) {
+            OutlinedTextField(
+                value = serverUrl,
+                onValueChange = { serverUrl = it },
+                label = { Text(stringResource(R.string.server_url_label)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (serverUrl.trim() != settings.serverStatusUrl) {
+                Button(onClick = {
+                    settings.serverStatusUrl = serverUrl
+                    settings.serverStatusJson = null
+                    settings.serverStatusAt = 0
+                    serverReachable = null
+                    serverCheck++
+                }) { Text(stringResource(R.string.save)) }
+            }
+            if (settings.serverStatusUrl.isEmpty()) {
+                Text(stringResource(R.string.server_hint), style = MaterialTheme.typography.bodySmall)
+            } else {
+                when (serverReachable) {
+                    null -> Text(stringResource(R.string.server_checking), style = MaterialTheme.typography.bodySmall)
+                    false -> Text(stringResource(R.string.server_unreachable), color = MaterialTheme.colorScheme.error)
+                    true -> {}
+                }
+                val cached = settings.serverStatusJson?.let { runCatching { ServerStatus.parse(it) }.getOrNull() }
+                cached?.let { st ->
+                    val label = stringResource(when (st.state) {
+                        "ok" -> R.string.server_ok
+                        "error" -> R.string.server_error
+                        "stale" -> R.string.server_stale
+                        else -> R.string.server_none
+                    })
+                    // Bez połączenia pokazujemy ostatni znany stan z datą sprawdzenia
+                    Text(
+                        if (serverReachable == true) label
+                        else stringResource(R.string.server_last_known, label, fmt.format(Date(settings.serverStatusAt))),
+                        color = if (st.state == "ok") Color(0xFF43A047) else MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    if (st.lastAt > 0) {
+                        Text(stringResource(R.string.server_last_backup, fmt.format(Date(st.lastAt)),
+                            DateUtils.getRelativeTimeSpanString(st.lastAt, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS)))
+                        Text(stringResource(R.string.server_dirs, st.dirsOk, st.dirsOk + st.dirsErr),
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (st.failed.isNotEmpty()) {
+                        Text(stringResource(R.string.server_failed, st.failed.joinToString(", ")),
+                            color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                OutlinedButton(onClick = { serverCheck++ }) { Text(stringResource(R.string.server_refresh)) }
+            }
         }
 
         Section(stringResource(R.string.section_log)) {
