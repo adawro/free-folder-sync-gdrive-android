@@ -9,8 +9,9 @@ import org.json.JSONObject
  * Jeden kopiowany folder: folder w telefonie wybrany przez systemowe okno (SAF, OPEN_DOCUMENT_TREE)
  * i ścieżka folderu docelowego na Drive, np. "Telefon/signal backup" (liczona od "Mój dysk").
  * id wiąże pliki w bazie z folderem (ścieżki plików są względne, więc w dwóch folderach mogą się powtarzać).
+ * watch: nowe pliki wysyłane od razu, nie tylko o godzinie z ustawień (SyncWorker.armWatch).
  */
-data class FolderPair(val id: Long, val treeUri: Uri, val drivePath: String)
+data class FolderPair(val id: Long, val treeUri: Uri, val drivePath: String, val watch: Boolean = false)
 
 /** Ustawienia aplikacji (SharedPreferences). */
 class Settings(context: Context) {
@@ -27,12 +28,15 @@ class Settings(context: Context) {
             val arr = JSONArray(json)
             return List(arr.length()) {
                 val o = arr.getJSONObject(it)
-                FolderPair(o.getLong("id"), Uri.parse(o.getString("tree")), o.getString("drive"))
+                FolderPair(o.getLong("id"), Uri.parse(o.getString("tree")), o.getString("drive"), o.optBoolean("watch"))
             }
         }
         set(v) {
             val arr = JSONArray()
-            v.forEach { arr.put(JSONObject().put("id", it.id).put("tree", it.treeUri.toString()).put("drive", it.drivePath)) }
+            v.forEach {
+                arr.put(JSONObject().put("id", it.id).put("tree", it.treeUri.toString()).put("drive", it.drivePath)
+                    .put("watch", it.watch))
+            }
             prefs.edit().putString("pairs", arr.toString()).remove("tree_uri").remove("drive_path").apply()
         }
 
@@ -45,6 +49,10 @@ class Settings(context: Context) {
 
     fun setDrivePath(id: Long, drivePath: String) {
         pairs = pairs.map { if (it.id == id) it.copy(drivePath = cleanPath(drivePath)) else it }
+    }
+
+    fun setWatch(id: Long, watch: Boolean) {
+        pairs = pairs.map { if (it.id == id) it.copy(watch = watch) else it }
     }
 
     fun removePair(id: Long) {

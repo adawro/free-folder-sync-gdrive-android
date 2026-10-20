@@ -19,6 +19,9 @@
     <string name="remove_folder">Usuń</string>
     <string name="remove_folder_title">Usunąć folder „%1$s”?</string>
     <string name="remove_folder_text">Aplikacja przestanie go kopiować. Pliki już wysłane zostają na Drive w „%1$s”.</string>
+    <string name="sync_folder">Synchronizuj</string>
+    <string name="watch_label">Wysyłaj od razu nowe pliki</string>
+    <string name="watch_hint">Gdy w telefonie pojawi się nowy plik, folder jest sprawdzany w ciągu kilku minut (zgodnie z ustawieniami sieci i ładowania). Plik idzie na Drive, gdy przez 2 minuty się nie zmienia.</string>
     <string name="cancel">Anuluj</string>
     <string name="folder_already_added">Ten folder jest już dodany</string>
     <string name="folder_unavailable">Folder niedostępny (usunięty albo cofnięty dostęp)</string>

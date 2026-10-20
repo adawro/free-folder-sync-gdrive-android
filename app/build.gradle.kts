@@ -19,8 +19,8 @@ android {
         applicationId = "pl.adamw.drivesync"
         minSdk = 29
         targetSdk = 35
-        versionCode = 12
-        versionName = "0.7.0"
+        versionCode = 13
+        versionName = "0.7.1"
     }
 
     // Podpis z local.properties (signing.storeFile/storePassword/keyAlias/keyPassword);

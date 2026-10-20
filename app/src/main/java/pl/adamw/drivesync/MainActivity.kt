@@ -27,10 +27,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -56,6 +58,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.work.WorkInfo
@@ -144,11 +147,13 @@ private fun Screen() {
     }
 
     // Stan zadań WorkManagera (ręczne + okresowe)
-    val now by WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow(SyncWorker.NOW).collectAsState(emptyList())
+    // Wszystkie wysyłki mają znacznik TAG; SCHEDULED osobno, bo zadanie z budzika sprzed 0.7 go nie ma
+    val tagged by WorkManager.getInstance(context).getWorkInfosByTagFlow(SyncWorker.TAG).collectAsState(emptyList())
     val periodic by WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow(SyncWorker.SCHEDULED).collectAsState(emptyList())
-    val running = (now + periodic).firstOrNull { it.state == WorkInfo.State.RUNNING }
+    val works = (tagged + periodic).distinctBy { it.id }
+    val running = works.firstOrNull { it.state == WorkInfo.State.RUNNING }
     // Po błędzie zadanie czeka w kolejce na ponowienie (Result.retry)
-    val retryAt = (now + periodic).filter { it.state == WorkInfo.State.ENQUEUED && it.runAttemptCount > 0 }
+    val retryAt = works.filter { it.state == WorkInfo.State.ENQUEUED && it.runAttemptCount > 0 }
         .minOfOrNull { it.nextScheduleTimeMillis }
 
     // Log i liczniki z bazy (co 2 s, bo zapisuje je worker)
@@ -259,7 +264,21 @@ private fun Screen() {
                 )
                 Text(stringResource(R.string.uploaded_count, uploadedCounts[pair.id] ?: 0),
                     style = MaterialTheme.typography.bodySmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    Modifier.fillMaxWidth().toggleable(value = pair.watch, role = Role.Checkbox) {
+                        settings.setWatch(pair.id, it)
+                        pairs = settings.pairs
+                        SyncWorker.armWatch(context)
+                    },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(checked = pair.watch, onCheckedChange = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.watch_label))
+                }
+                if (pair.watch) Text(stringResource(R.string.watch_hint), style = MaterialTheme.typography.bodySmall)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { removing = pair }) { Text(stringResource(R.string.remove_folder)) }
                     val newPath = Settings.cleanPath(edit)
                     if (newPath != pair.drivePath && newPath.isNotEmpty()) {
                         Button(onClick = {
@@ -273,7 +292,11 @@ private fun Screen() {
                             refresh++
                         }) { Text(stringResource(R.string.save)) }
                     }
-                    OutlinedButton(onClick = { removing = pair }) { Text(stringResource(R.string.remove_folder)) }
+                    Spacer(Modifier.weight(1f))
+                    Button(
+                        onClick = { SyncWorker.syncNow(context, pair.id); refresh++ },
+                        enabled = running == null && !settings.needsSignIn && newPath == pair.drivePath,
+                    ) { Text(stringResource(R.string.sync_folder)) }
                 }
             }
             Button(onClick = { addFolder.launch(null) }) { Text(stringResource(R.string.add_folder)) }
@@ -310,15 +333,15 @@ private fun Screen() {
             Toggle(stringResource(R.string.wifi), settings.allowWifi.also { refresh }) {
                 settings.allowWifi = it
                 if (!it) settings.allowMobile = true  // co najmniej jedna sieć
-                SyncWorker.schedule(context); refresh++
+                SyncWorker.schedule(context); SyncWorker.constraintsChanged(context); refresh++
             }
             Toggle(stringResource(R.string.mobile_data), settings.allowMobile.also { refresh }) {
                 settings.allowMobile = it
                 if (!it) settings.allowWifi = true
-                SyncWorker.schedule(context); refresh++
+                SyncWorker.schedule(context); SyncWorker.constraintsChanged(context); refresh++
             }
             Toggle(stringResource(R.string.charging_only), settings.chargingOnly.also { refresh }) {
-                settings.chargingOnly = it; SyncWorker.schedule(context); refresh++
+                settings.chargingOnly = it; SyncWorker.schedule(context); SyncWorker.constraintsChanged(context); refresh++
             }
             val time = settings.syncTimeMinutes.also { refresh }
             val hhmm = "%d:%02d".format(time / 60, time % 60)

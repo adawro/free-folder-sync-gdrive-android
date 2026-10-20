@@ -24,6 +24,9 @@
     <string name="remove_folder">Remove</string>
     <string name="remove_folder_title">Remove folder \"%1$s\"?</string>
     <string name="remove_folder_text">The app will stop copying it. Files already uploaded stay on Drive in \"%1$s\".</string>
+    <string name="sync_folder">Sync</string>
+    <string name="watch_label">Upload new files right away</string>
+    <string name="watch_hint">When a new file appears on the phone, the folder is checked within a few minutes (following the network and charging settings). A file is uploaded once it has not changed for 2 minutes.</string>
     <string name="cancel">Cancel</string>
     <string name="folder_already_added">This folder is already added</string>
     <string name="folder_unavailable">Folder unavailable (deleted or access revoked)</string>

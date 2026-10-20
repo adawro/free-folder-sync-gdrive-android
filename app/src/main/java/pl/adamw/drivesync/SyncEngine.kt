@@ -8,7 +8,11 @@ import java.io.FileInputStream
 import java.io.IOException
 import java.security.MessageDigest
 
-data class SyncSummary(val uploaded: Int, val failed: Int, val pending: Int, val alreadyThere: Int = 0)
+/** pending = czekające na wysyłkę (w tym nieudane), waiting = z nich te jeszcze zapisywane (za świeże). */
+data class SyncSummary(val uploaded: Int, val failed: Int, val pending: Int, val alreadyThere: Int = 0, val waiting: Int = 0) {
+    operator fun plus(o: SyncSummary) = SyncSummary(uploaded + o.uploaded, failed + o.failed, pending + o.pending,
+        alreadyThere + o.alreadyThere, waiting + o.waiting)
+}
 
 /**
  * Kopiowanie w jedną stronę: telefon -> Drive, folder po folderze (Settings.pairs). Nic nie jest usuwane na Drive.
@@ -24,8 +28,10 @@ class SyncEngine(
     private val drive = DriveApi(context)
     val requests: Int get() = drive.requests
 
-    suspend fun run(): SyncSummary = lock.withLock {
+    /** only = id folderów do sprawdzenia (przycisk przy folderze, wysyłka od razu); null = wszystkie. */
+    suspend fun run(only: Set<Long>? = null): SyncSummary = lock.withLock {
         val pairs = settings.pairs.ifEmpty { throw IllegalStateException(context.getString(R.string.err_no_phone_folder)) }
+            .filter { only == null || it.id in only }
         var total = SyncSummary(0, 0, 0)
         for (pair in pairs) {
             val s = try {
@@ -43,12 +49,12 @@ class SyncEngine(
                 db.log(context.getString(R.string.log_folder_failed, label(pair), e.message ?: e.toString()), error = true)
                 SyncSummary(0, 1, 0)
             }
-            total = SyncSummary(total.uploaded + s.uploaded, total.failed + s.failed,
-                total.pending + s.pending, total.alreadyThere + s.alreadyThere)
+            total += s
         }
         // Tylko bez błędów - inaczej ekran pokazywałby świeżą synchronizację mimo błędów. Same pliki
         // jeszcze zapisywane nie przeszkadzają, o ile coś innego poszło (jak przy jednym folderze).
-        if (total.failed == 0 && (total.pending == 0 || total.uploaded + total.alreadyThere > 0)) {
+        // Tylko po sprawdzeniu wszystkich folderów: budzik nadrabia wysyłkę, gdy lastSyncAt jest starsze.
+        if (only == null && total.failed == 0 && (total.pending == 0 || total.uploaded + total.alreadyThere > 0)) {
             settings.lastSyncAt = System.currentTimeMillis()
         }
         return total
@@ -67,7 +73,7 @@ class SyncEngine(
         }
         // Plik jeszcze zapisywany (np. Signal tworzy kopię) - poczekaj, aż przestanie się zmieniać
         val ready = todo.filter { now - it.mtime > STABLE_MS }
-        if (ready.isEmpty()) return SyncSummary(0, 0, todo.size)
+        if (ready.isEmpty()) return SyncSummary(0, 0, todo.size, waiting = todo.size)
 
         checkTargetStillExists(pair)
         var uploaded = 0
@@ -88,7 +94,7 @@ class SyncEngine(
                 db.log("${label(pair)}/${f.path}: ${e.message}", error = true)
             }
         }
-        return SyncSummary(uploaded, failed, todo.size - ready.size + failed, alreadyThere)
+        return SyncSummary(uploaded, failed, todo.size - ready.size + failed, alreadyThere, todo.size - ready.size)
     }
 
     /** Ktoś usunął folder docelowy na Drive -> zapominamy stan i wysyłamy wszystko ponownie. */
