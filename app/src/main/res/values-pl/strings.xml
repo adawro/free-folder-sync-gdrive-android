@@ -22,6 +22,8 @@
     <string name="sync_folder">Synchronizuj</string>
     <string name="watch_label">Wysyłaj od razu nowe pliki</string>
     <string name="watch_hint">Gdy w telefonie pojawi się nowy plik, folder jest sprawdzany w ciągu kilku minut (zgodnie z ustawieniami sieci i ładowania). Plik idzie na Drive, gdy przez 2 minuty się nie zmienia.</string>
+    <string name="watch_armed">Wysyłka od razu: czeka na nowe pliki</string>
+    <string name="watch_not_armed">Wysyłka od razu: nieaktywna (otwórz aplikację ponownie)</string>
     <string name="cancel">Anuluj</string>
     <string name="folder_already_added">Ten folder jest już dodany</string>
     <string name="folder_unavailable">Folder niedostępny (usunięty albo cofnięty dostęp)</string>
@@ -55,8 +57,16 @@
     <string name="log_resuming">%1$s: wznawiam od %2$s</string>
     <string name="log_target_changed">Nowy folder na Drive: \"%1$s\" - pliki tego folderu zostaną tam wysłane</string>
     <string name="log_folder_failed">%1$s: %2$s</string>
+    <string name="log_waiting">%1$s: plików zmienionych przed chwilą: %2$d - wysyłka, gdy przez %3$d s nie będą się zmieniać</string>
+    <string name="log_check_again">Ponowne sprawdzenie za %1$d min</string>
+    <string name="log_watch_run">Zmiana plików w telefonie - sprawdzam foldery z wysyłką od razu</string>
     <string name="log_target_gone">Folder \"%1$s\" zniknął z Drive - wszystkie pliki zostaną wysłane ponownie</string>
-    <string name="log_summary">Synchronizacja: wysłano %1$d, błędy %2$d, czeka %3$d</string>
+    <string name="log_summary">Synchronizacja (%4$s): wysłano %1$d, błędy %2$d, czeka %3$d</string>
+    <string name="source_scheduled">automatycznie o %1$s</string>
+    <string name="source_manual">ręcznie</string>
+    <string name="source_manual_folder">ręcznie: %1$s</string>
+    <string name="source_watch">od razu, nowe pliki</string>
+    <string name="source_check_again">ponowne sprawdzenie</string>
     <string name="log_needs_sign_in">Wymagane ponowne połączenie z Google Drive - otwórz aplikację</string>
     <string name="log_network_error">Błąd sieci: %1$s</string>
     <string name="log_config_error">Błąd konfiguracji</string>

@@ -28,14 +28,17 @@ class SyncEngine(
     private val drive = DriveApi(context)
     val requests: Int get() = drive.requests
 
-    /** only = id folderów do sprawdzenia (przycisk przy folderze, wysyłka od razu); null = wszystkie. */
-    suspend fun run(only: Set<Long>? = null): SyncSummary = lock.withLock {
+    /**
+     * only = id folderów do sprawdzenia (przycisk przy folderze, wysyłka od razu); null = wszystkie.
+     * manual = kliknięte przycisk: wystarczy krótka chwila bez zmian, użytkownik chce wysłać teraz.
+     */
+    suspend fun run(only: Set<Long>? = null, manual: Boolean = false): SyncSummary = lock.withLock {
         val pairs = settings.pairs.ifEmpty { throw IllegalStateException(context.getString(R.string.err_no_phone_folder)) }
             .filter { only == null || it.id in only }
         var total = SyncSummary(0, 0, 0)
         for (pair in pairs) {
             val s = try {
-                runPair(pair)
+                runPair(pair, if (manual) STABLE_MANUAL_MS else STABLE_MS)
             } catch (e: NeedsSignInException) {
                 throw e
             } catch (e: CancellationException) {
@@ -63,7 +66,7 @@ class SyncEngine(
     /** Nazwa folderu w dzienniku i powiadomieniu: ostatni człon ścieżki na Drive. */
     private fun label(pair: FolderPair) = pair.drivePath.substringAfterLast('/').ifEmpty { "?" }
 
-    private suspend fun runPair(pair: FolderPair): SyncSummary {
+    private suspend fun runPair(pair: FolderPair, stableMs: Long): SyncSummary {
         val target = pair.drivePath.ifEmpty { throw IllegalStateException(context.getString(R.string.err_no_drive_folder)) }
         val now = System.currentTimeMillis()
         val files = LocalFiles.list(context, pair.treeUri)
@@ -72,8 +75,10 @@ class SyncEngine(
             r == null || r.uploadedAt == 0L || r.driveId == null || r.size != f.size || r.mtime != f.mtime
         }
         // Plik jeszcze zapisywany (np. Signal tworzy kopię) - poczekaj, aż przestanie się zmieniać
-        val ready = todo.filter { now - it.mtime > STABLE_MS }
-        if (ready.isEmpty()) return SyncSummary(0, 0, todo.size, waiting = todo.size)
+        val ready = todo.filter { now - it.mtime > stableMs }
+        val waiting = todo.size - ready.size
+        if (waiting > 0) db.log(context.getString(R.string.log_waiting, label(pair), waiting, stableMs / 1000))
+        if (ready.isEmpty()) return SyncSummary(0, 0, todo.size, waiting = waiting)
 
         checkTargetStillExists(pair)
         var uploaded = 0
@@ -94,7 +99,7 @@ class SyncEngine(
                 db.log("${label(pair)}/${f.path}: ${e.message}", error = true)
             }
         }
-        return SyncSummary(uploaded, failed, todo.size - ready.size + failed, alreadyThere, todo.size - ready.size)
+        return SyncSummary(uploaded, failed, waiting + failed, alreadyThere, waiting)
     }
 
     /** Ktoś usunął folder docelowy na Drive -> zapominamy stan i wysyłamy wszystko ponownie. */
@@ -209,6 +214,7 @@ class SyncEngine(
     companion object {
         private const val CHUNK = 8L * 1024 * 1024  // wielokrotność 256 KiB (wymóg Drive)
         private const val STABLE_MS = 2 * 60 * 1000L
+        private const val STABLE_MANUAL_MS = 15 * 1000L
         /** Okresowa i ręczna synchronizacja nie mogą wysyłać tego samego pliku równocześnie. */
         private val lock = Mutex()
 

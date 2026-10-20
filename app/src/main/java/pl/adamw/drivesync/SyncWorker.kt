@@ -39,20 +39,23 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
     private suspend fun sync(): Result = withContext(Dispatchers.IO) {
         val settings = Settings(applicationContext)
         settings.lastAttemptAt = System.currentTimeMillis()
-        val watch = inputData.getBoolean(KEY_WATCH, false)
+        val slot = inputData.getString(KEY_WATCH)  // nazwa zadania „wysyłka od razu”, null = inna wysyłka
+        val watch = slot != null
         // Czuwanie bierze aktualnie zaznaczone foldery (mogły się zmienić od zaplanowania zadania)
         val only = if (watch) settings.pairs.filter { it.watch }.map { it.id }.toSet().ifEmpty { return@withContext Result.success() }
             else inputData.getLongArray(KEY_PAIRS)?.toSet()
-        val (result, error) = runSync(settings, only)
+        val (result, error) = runSync(settings, only, manual = inputData.getBoolean(KEY_MANUAL, false), watch = watch)
         settings.lastError = error  // do pokazania na ekranie stanu (null = udało się)
         if (!watch) return@withContext result
         // Wysyłka od razu: czuwanie ustawiamy od nowa (wyzwalacz działa raz). Błędy nadrobi
         // codzienna wysyłka - ponawianie tego zadania czekałoby i tak na kolejną zmianę plików.
-        if (!settings.needsSignIn) armWatch(applicationContext, ExistingWorkPolicy.APPEND_OR_REPLACE)
+        if (!settings.needsSignIn && settings.pairs.any { it.watch }) {
+            enqueueWatch(applicationContext, WATCH_SLOTS.first { it != slot })
+        }
         Result.success()
     }
 
-    private suspend fun runSync(settings: Settings, only: Set<Long>?): Pair<Result, String?> {
+    private suspend fun runSync(settings: Settings, only: Set<Long>?, manual: Boolean, watch: Boolean): Pair<Result, String?> {
         val db = Db.get(applicationContext)
         var foreground = false
         var lastNotify = 0L
@@ -68,10 +71,14 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             }
         }
         try {
-            val summary = engine.run(only)
+            val summary = engine.run(only, manual)
+            // Ślad, że „wysyłka od razu” zadziałała (tylko gdy było co sprawdzać - zmiany innych plików pomijamy)
+            if (watch && summary.uploaded + summary.failed + summary.pending + summary.alreadyThere > 0) {
+                db.log(applicationContext.getString(R.string.log_watch_run))
+            }
             settings.needsSignIn = false
             if (summary.uploaded > 0 || summary.failed > 0) {
-                db.log(applicationContext.getString(R.string.log_summary, summary.uploaded, summary.failed, summary.pending) +
+                db.log(applicationContext.getString(R.string.log_summary, summary.uploaded, summary.failed, summary.pending, source(settings, only, manual, watch)) +
                     applicationContext.getString(R.string.log_requests, engine.requests), error = summary.failed > 0)
             }
             if (summary.alreadyThere > 0) db.log(applicationContext.getString(R.string.log_already_there, summary.alreadyThere))
@@ -79,11 +86,12 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             // Nowy plik jest jeszcze zapisywany (wysyłamy dopiero po 2 min bez zmian) - sprawdź za chwilę,
             // zamiast czekać do nocy. Najwyżej FOLLOW_UPS razy, gdyby plik zmieniał się bez końca.
             val followUp = inputData.getInt(KEY_FOLLOW_UP, 0)
-            if (only != null && summary.waiting > 0 && followUp < FOLLOW_UPS) {
-                checkAgain(applicationContext, only, followUp + 1)
+            if (summary.waiting > 0 && followUp < FOLLOW_UPS) {
+                checkAgain(applicationContext, only ?: settings.pairs.map { it.id }.toSet(), followUp + 1)
+                db.log(applicationContext.getString(R.string.log_check_again, CHECK_AGAIN_MIN))
             }
             return if (summary.failed > 0) {
-                Result.retry() to applicationContext.getString(R.string.log_summary, summary.uploaded, summary.failed, summary.pending)
+                Result.retry() to applicationContext.getString(R.string.log_summary, summary.uploaded, summary.failed, summary.pending, source(settings, only, manual, watch))
             } else {
                 Result.success() to null
             }
@@ -110,6 +118,19 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             val msg = applicationContext.getString(R.string.log_unexpected, e.toString())  // np. cofnięty dostęp do folderu
             db.log(msg, error = true)
             return Result.failure() to msg
+        }
+    }
+
+    /** Skąd ta wysyłka - do podsumowania w dzienniku. Bez znaczników = budzik o godzinie z ustawień. */
+    private fun source(settings: Settings, only: Set<Long>?, manual: Boolean, watch: Boolean): String {
+        val ctx = applicationContext
+        val names = only?.let { ids -> settings.pairs.filter { it.id in ids }.joinToString(", ") { it.drivePath.substringAfterLast('/') } }
+        return when {
+            watch -> ctx.getString(R.string.source_watch)
+            manual && names != null -> ctx.getString(R.string.source_manual_folder, names)
+            manual -> ctx.getString(R.string.source_manual)
+            inputData.getInt(KEY_FOLLOW_UP, 0) > 0 -> ctx.getString(R.string.source_check_again)
+            else -> ctx.getString(R.string.source_scheduled, "%d:%02d".format(settings.syncTimeMinutes / 60, settings.syncTimeMinutes % 60))
         }
     }
 
@@ -151,13 +172,17 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         private const val OLD_PERIODIC = "sync-periodic"  // wersja 0.1: co godzinę
         const val NOW = "sync-now"
         /** Czekające zadanie „wysyłka od razu” (wyzwalane zmianą plików w pamięci telefonu). */
-        private const val WATCH = "sync-watch"
+        private val WATCH_SLOTS = listOf("sync-watch-a", "sync-watch-b")
+        private const val OLD_WATCH = "sync-watch"  // 0.7.1
+        const val WATCH_TAG = "sync-watch"
         private const val CHECK_AGAIN = "sync-check-again"
         /** Wszystkie zadania wysyłki - ekran po tym znaczniku pokazuje postęp. */
         const val TAG = "sync"
         private const val KEY_PAIRS = "pairs"
         private const val KEY_WATCH = "watch"
         private const val KEY_FOLLOW_UP = "follow_up"
+        private const val KEY_MANUAL = "manual"
+        private const val CHECK_AGAIN_MIN = 3L
         private const val FOLLOW_UPS = 10
 
         private fun ensureChannel(context: Context) {
@@ -186,6 +211,7 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         fun schedule(context: Context) {
             val wm = WorkManager.getInstance(context)
             wm.cancelUniqueWork(OLD_PERIODIC)
+            wm.cancelUniqueWork(OLD_WATCH)
             // Stare opóźnione zadanie (sprzed budzika) - tylko jeśli jeszcze czeka, nie przerywamy trwającej wysyłki
             val old = wm.getWorkInfosForUniqueWork(OLD_NIGHTLY)
             old.addListener({
@@ -255,7 +281,10 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
                         .setRequiredNetworkType(networkType(s))
                         .build()
                 )
-                .apply { if (pair != null) setInputData(workDataOf(KEY_PAIRS to longArrayOf(pair))) }
+                .setInputData(
+                    if (pair != null) workDataOf(KEY_PAIRS to longArrayOf(pair), KEY_MANUAL to true)
+                    else workDataOf(KEY_MANUAL to true)
+                )
                 .build()
             val name = if (pair == null) NOW else "$NOW-$pair"
             WorkManager.getInstance(context).enqueueUniqueWork(name, ExistingWorkPolicy.REPLACE, request)
@@ -267,16 +296,34 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
          * na MediaStore łapie też pliki z folderów wybranych przez SAF - także tych innych aplikacji (np. Signala).
          * Wyzwalacz nie mówi, który folder się zmienił; zadanie sprawdza wszystkie zaznaczone foldery
          * (bez nowych plików kończy się na liście plików, bez zapytań do Drive).
-         * KEEP: wołane przy każdym otwarciu aplikacji - czekającego zadania nie ruszamy. Po zmianie sieci
-         * albo „tylko podczas ładowania” REPLACE (constraintsChanged), bo warunki są zapisane w zadaniu.
+         *
+         * Wyzwalacz działa raz, więc trwające zadanie uzbraja następne - pod drugą z dwóch nazw (WATCH_SLOTS):
+         * REPLACE pod własną nazwą przerwałoby je samo, a dopięcie do łańcucha (APPEND) w praktyce nie ruszało.
+         * Wołane przy każdym otwarciu aplikacji: gdy któreś zadanie czeka albo trwa, nic nie robi.
          */
-        fun armWatch(context: Context, policy: ExistingWorkPolicy = ExistingWorkPolicy.KEEP) {
-            val s = Settings(context)
+        fun armWatch(context: Context) {
             val wm = WorkManager.getInstance(context)
-            if (s.pairs.none { it.watch }) {
-                wm.cancelUniqueWork(WATCH)
+            if (Settings(context).pairs.none { it.watch }) {
+                WATCH_SLOTS.forEach { wm.cancelUniqueWork(it) }
                 return
             }
+            val infos = wm.getWorkInfosByTag(WATCH_TAG)
+            infos.addListener({
+                val alive = runCatching { infos.get() }.getOrDefault(emptyList()).any { !it.state.isFinished }
+                if (!alive) enqueueWatch(context, WATCH_SLOTS[0])
+            }, Runnable::run)
+        }
+
+        /** Zmiana sieci albo „tylko podczas ładowania”: warunki są zapisane w zadaniu, więc od nowa. */
+        fun constraintsChanged(context: Context) {
+            val wm = WorkManager.getInstance(context)
+            wm.cancelUniqueWork(WATCH_SLOTS[1])
+            if (Settings(context).pairs.none { it.watch }) wm.cancelUniqueWork(WATCH_SLOTS[0])
+            else enqueueWatch(context, WATCH_SLOTS[0])
+        }
+
+        private fun enqueueWatch(context: Context, slot: String) {
+            val s = Settings(context)
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(networkType(s))
                 .setRequiresCharging(s.chargingOnly)
@@ -288,27 +335,27 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
                 .build()
             val request = OneTimeWorkRequestBuilder<SyncWorker>()
                 .addTag(TAG)
+                .addTag(WATCH_TAG)
                 .setConstraints(constraints)
-                .setInputData(workDataOf(KEY_WATCH to true))
+                .setInputData(workDataOf(KEY_WATCH to slot))
                 .build()
-            wm.enqueueUniqueWork(WATCH, policy, request)
+            WorkManager.getInstance(context).enqueueUniqueWork(slot, ExistingWorkPolicy.REPLACE, request)
         }
-
-        fun constraintsChanged(context: Context) = armWatch(context, ExistingWorkPolicy.REPLACE)
 
         /**
          * Ponowne sprawdzenie folderów za kilka minut, gdy nowy plik był jeszcze zapisywany.
-         * APPEND_OR_REPLACE: wołane także z trwającego sprawdzenia - REPLACE przerwałoby je samo.
+         * Kolejne sprawdzenia na zmianę pod dwiema nazwami: wołane także z trwającego sprawdzenia,
+         * a REPLACE pod jego własną nazwą przerwałoby je samo.
          */
         private fun checkAgain(context: Context, pairs: Set<Long>, followUp: Int) {
             val s = Settings(context)
             val request = OneTimeWorkRequestBuilder<SyncWorker>()
                 .addTag(TAG)
                 .setConstraints(constraints(s))
-                .setInitialDelay(3, TimeUnit.MINUTES)
+                .setInitialDelay(CHECK_AGAIN_MIN, TimeUnit.MINUTES)
                 .setInputData(workDataOf(KEY_PAIRS to pairs.toLongArray(), KEY_FOLLOW_UP to followUp))
                 .build()
-            WorkManager.getInstance(context).enqueueUniqueWork(CHECK_AGAIN, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
+            WorkManager.getInstance(context).enqueueUniqueWork("$CHECK_AGAIN-${followUp % 2}", ExistingWorkPolicy.REPLACE, request)
         }
     }
 }

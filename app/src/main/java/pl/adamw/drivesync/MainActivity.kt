@@ -399,6 +399,12 @@ private fun Screen() {
                 Text(stringResource(R.string.last_attempt_failed, fmt.format(Date(settings.lastAttemptAt)), error),
                     color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
+            if (pairs.any { it.watch }) {
+                val armed = works.any { SyncWorker.WATCH_TAG in it.tags && !it.state.isFinished }
+                Text(stringResource(if (armed) R.string.watch_armed else R.string.watch_not_armed),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (armed) Color.Unspecified else MaterialTheme.colorScheme.error)
+            }
             if (running == null && retryAt != null && retryAt != Long.MAX_VALUE) {
                 Text(stringResource(R.string.retry_at, fmt.format(Date(retryAt))), style = MaterialTheme.typography.bodySmall)
             }

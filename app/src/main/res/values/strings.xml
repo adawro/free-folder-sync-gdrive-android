@@ -27,6 +27,8 @@
     <string name="sync_folder">Sync</string>
     <string name="watch_label">Upload new files right away</string>
     <string name="watch_hint">When a new file appears on the phone, the folder is checked within a few minutes (following the network and charging settings). A file is uploaded once it has not changed for 2 minutes.</string>
+    <string name="watch_armed">Upload right away: waiting for new files</string>
+    <string name="watch_not_armed">Upload right away: not active (reopen the app)</string>
     <string name="cancel">Cancel</string>
     <string name="folder_already_added">This folder is already added</string>
     <string name="folder_unavailable">Folder unavailable (deleted or access revoked)</string>
@@ -65,8 +67,16 @@
     <string name="log_resuming">%1$s: resuming from %2$s</string>
     <string name="log_target_changed">New Drive folder: \"%1$s\" - this folder\'s files will be uploaded there</string>
     <string name="log_folder_failed">%1$s: %2$s</string>
+    <string name="log_waiting">%1$s: files changed a moment ago: %2$d - uploading once they stay unchanged for %3$d s</string>
+    <string name="log_check_again">Checking again in %1$d min</string>
+    <string name="log_watch_run">Files changed on the phone - checking folders with upload right away</string>
     <string name="log_target_gone">Folder \"%1$s\" is gone from Drive - all files will be uploaded again</string>
-    <string name="log_summary">Sync: uploaded %1$d, errors %2$d, waiting %3$d</string>
+    <string name="log_summary">Sync (%4$s): uploaded %1$d, errors %2$d, waiting %3$d</string>
+    <string name="source_scheduled">scheduled at %1$s</string>
+    <string name="source_manual">manual</string>
+    <string name="source_manual_folder">manual: %1$s</string>
+    <string name="source_watch">right away, new files</string>
+    <string name="source_check_again">check again</string>
     <string name="log_needs_sign_in">Google Drive needs to be reconnected - open the app</string>
     <string name="log_network_error">Network error: %1$s</string>
     <string name="log_config_error">Configuration error</string>
