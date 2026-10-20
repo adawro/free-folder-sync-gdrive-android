@@ -11,7 +11,8 @@ import java.net.URL
  * z adresu podanego w ustawieniach - zwykle przez VPN. Oczekiwany JSON:
  *
  *   {"state": "ok" | "error" | "stale" | "none", "last": <epoch s>, "age_min": 12,
- *    "dirs_ok": 9, "dirs_err": 0, "failed": ["katalog", ...]}
+ *    "dirs_ok": 9, "dirs_err": 0, "failed": ["katalog", ...],
+ *    "host": {"up_h": 26, "net": true}}      <- opcjonalnie: uptime serwera i czy ma internet
  *
  * Werdykt (state) liczy serwer; aplikacja go tylko pokazuje.
  */
@@ -21,17 +22,22 @@ data class ServerStatus(
     val dirsOk: Int,
     val dirsErr: Int,
     val failed: List<String>,
+    val upH: Int,           // -1 = serwer nie podaje
+    val net: Boolean?,      // null = serwer nie podaje
 ) {
     companion object {
         fun parse(json: String): ServerStatus {
             val o = JSONObject(json)
             val failed = o.optJSONArray("failed")
+            val host = o.optJSONObject("host")
             return ServerStatus(
                 state = o.optString("state", "none"),
                 lastAt = o.optLong("last", 0) * 1000,
                 dirsOk = o.optInt("dirs_ok"),
                 dirsErr = o.optInt("dirs_err"),
                 failed = List(failed?.length() ?: 0) { failed!!.getString(it) },
+                upH = host?.optInt("up_h", -1) ?: -1,
+                net = host?.takeIf { it.has("net") }?.optBoolean("net"),
             )
         }
 

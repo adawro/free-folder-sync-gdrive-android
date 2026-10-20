@@ -6,6 +6,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.PowerManager
 import android.os.Bundle
@@ -171,6 +172,7 @@ private fun Screen() {
     // i na żądanie. Nieosiągalny serwer (np. bez VPN) to "brak danych", nie błąd.
     var serverUrl by remember { mutableStateOf(settings.serverStatusUrl) }
     var serverReachable by remember { mutableStateOf<Boolean?>(null) }  // null = jeszcze nie sprawdzono
+    var vpnOn by remember { mutableStateOf(false) }  // przy braku odpowiedzi: VPN wyłączony czy serwer leży
     var serverCheck by remember { mutableIntStateOf(0) }
     LaunchedEffect(serverCheck) {
         while (true) {
@@ -182,7 +184,12 @@ private fun Screen() {
                         settings.serverStatusAt = System.currentTimeMillis()
                         serverReachable = true
                     }
-                    .onFailure { serverReachable = false }
+                    .onFailure {
+                        val cm = context.getSystemService(ConnectivityManager::class.java)
+                        vpnOn = cm.getNetworkCapabilities(cm.activeNetwork)
+                            ?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
+                        serverReachable = false
+                    }
             }
             delay(60_000)
         }
@@ -381,10 +388,21 @@ private fun Screen() {
             } else {
                 when (serverReachable) {
                     null -> Text(stringResource(R.string.server_checking), style = MaterialTheme.typography.bodySmall)
-                    false -> Text(stringResource(R.string.server_unreachable), color = MaterialTheme.colorScheme.error)
+                    false -> Text(stringResource(if (vpnOn) R.string.server_down else R.string.server_unreachable),
+                        color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleSmall)
                     true -> {}
                 }
                 val cached = settings.serverStatusJson?.let { runCatching { ServerStatus.parse(it) }.getOrNull() }
+                // Odpowiedź = serwer działa; z "host" wiemy jeszcze, czy sam ma internet
+                if (serverReachable == true && cached != null) {
+                    val up = if (cached.upH >= 0) stringResource(R.string.server_up_h, cached.upH) else ""
+                    when (cached.net) {
+                        false -> Text(stringResource(R.string.server_up_no_net, up),
+                            color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleSmall)
+                        else -> Text(stringResource(R.string.server_up, up),
+                            color = Color(0xFF43A047), style = MaterialTheme.typography.titleSmall)
+                    }
+                }
                 cached?.let { st ->
                     val label = stringResource(when (st.state) {
                         "ok" -> R.string.server_ok
