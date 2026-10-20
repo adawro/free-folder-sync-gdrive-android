@@ -171,7 +171,7 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             val s = Settings(context)
             val alarms = context.getSystemService(AlarmManager::class.java)
             val pending = alarmIntent(context)
-            if (s.treeUri == null || s.drivePath.isEmpty()) {
+            if (s.pairs.isEmpty()) {
                 alarms.cancel(pending)
                 return
             }

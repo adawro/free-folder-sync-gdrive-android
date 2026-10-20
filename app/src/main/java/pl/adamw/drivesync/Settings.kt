@@ -2,20 +2,54 @@ package pl.adamw.drivesync
 
 import android.content.Context
 import android.net.Uri
+import org.json.JSONArray
+import org.json.JSONObject
+
+/**
+ * Jeden kopiowany folder: folder w telefonie wybrany przez systemowe okno (SAF, OPEN_DOCUMENT_TREE)
+ * i ścieżka folderu docelowego na Drive, np. "Telefon/signal backup" (liczona od "Mój dysk").
+ * id wiąże pliki w bazie z folderem (ścieżki plików są względne, więc w dwóch folderach mogą się powtarzać).
+ */
+data class FolderPair(val id: Long, val treeUri: Uri, val drivePath: String)
 
 /** Ustawienia aplikacji (SharedPreferences). */
 class Settings(context: Context) {
     private val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
-    /** Folder w telefonie wybrany przez systemowe okno (SAF, OPEN_DOCUMENT_TREE). */
-    var treeUri: Uri?
-        get() = prefs.getString("tree_uri", null)?.let(Uri::parse)
-        set(v) = prefs.edit().putString("tree_uri", v?.toString()).apply()
+    /** Kopiowane foldery. Do wersji 0.6 był jeden (tree_uri + drive_path) - przenoszony jako folder o id 1. */
+    var pairs: List<FolderPair>
+        get() {
+            val json = prefs.getString("pairs", null)
+            if (json == null) {
+                val tree = prefs.getString("tree_uri", null) ?: return emptyList()
+                return listOf(FolderPair(1, Uri.parse(tree), prefs.getString("drive_path", "")!!)).also { pairs = it }
+            }
+            val arr = JSONArray(json)
+            return List(arr.length()) {
+                val o = arr.getJSONObject(it)
+                FolderPair(o.getLong("id"), Uri.parse(o.getString("tree")), o.getString("drive"))
+            }
+        }
+        set(v) {
+            val arr = JSONArray()
+            v.forEach { arr.put(JSONObject().put("id", it.id).put("tree", it.treeUri.toString()).put("drive", it.drivePath)) }
+            prefs.edit().putString("pairs", arr.toString()).remove("tree_uri").remove("drive_path").apply()
+        }
 
-    /** Ścieżka folderu docelowego na Drive, np. "Telefon/signal backup" (liczona od "Mój dysk"). */
-    var drivePath: String
-        get() = prefs.getString("drive_path", "")!!
-        set(v) = prefs.edit().putString("drive_path", v.trim('/', ' ')).apply()
+    fun addPair(tree: Uri, drivePath: String): FolderPair {
+        val current = pairs
+        val pair = FolderPair((current.maxOfOrNull { it.id } ?: 0) + 1, tree, cleanPath(drivePath))
+        pairs = current + pair
+        return pair
+    }
+
+    fun setDrivePath(id: Long, drivePath: String) {
+        pairs = pairs.map { if (it.id == id) it.copy(drivePath = cleanPath(drivePath)) else it }
+    }
+
+    fun removePair(id: Long) {
+        pairs = pairs.filter { it.id != id }
+    }
 
     /** Dozwolone sieci; co najmniej jedna jest zawsze włączona. Domyślnie z wersji 0.1/0.2 ("tylko Wi-Fi"). */
     var allowWifi: Boolean
@@ -76,4 +110,8 @@ class Settings(context: Context) {
     var needsSignIn: Boolean
         get() = prefs.getBoolean("needs_sign_in", true)
         set(v) = prefs.edit().putBoolean("needs_sign_in", v).apply()
+
+    companion object {
+        fun cleanPath(path: String) = path.trim('/', ' ')
+    }
 }

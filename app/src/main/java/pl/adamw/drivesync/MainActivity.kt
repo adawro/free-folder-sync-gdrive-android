@@ -28,8 +28,10 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -37,6 +39,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -44,6 +47,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -88,7 +92,9 @@ private fun Screen() {
     // Licznik wymuszający odświeżenie widoku po zmianach ustawień / logu
     var refresh by remember { mutableIntStateOf(0) }
     var signInError by remember { mutableStateOf<String?>(null) }
-    var drivePath by remember { mutableStateOf(settings.drivePath) }
+    var pairs by remember { mutableStateOf(settings.pairs) }
+    val pathEdits = remember { mutableStateMapOf<Long, String>() }  // niezapisane zmiany ścieżek na Drive
+    var removing by remember { mutableStateOf<FolderPair?>(null) }
     var clientId by remember { mutableStateOf(settings.customClientId) }
     var clientSecret by remember { mutableStateOf(CustomOAuth.clientSecret(context).orEmpty()) }
 
@@ -114,14 +120,19 @@ private fun Screen() {
             .onFailure { signInError = context.getString(R.string.connect_failed, it.message) }
     }
 
-    val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
+    val addFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
-        context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        settings.treeUri = uri
-        if (settings.drivePath.isEmpty()) {
-            settings.drivePath = context.getString(R.string.default_drive_parent) + "/" + (LocalFiles.treeName(context, uri) ?: "folder")
-            drivePath = settings.drivePath
+        if (settings.pairs.any { it.treeUri == uri }) {
+            Toast.makeText(context, R.string.folder_already_added, Toast.LENGTH_SHORT).show()
+            return@rememberLauncherForActivityResult
         }
+        context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        // Domyślnie "Telefon/<nazwa folderu>"; dwa foldery o tej samej nazwie dostają " 2", " 3"...
+        val base = context.getString(R.string.default_drive_parent) + "/" + (LocalFiles.treeName(context, uri) ?: "folder")
+        val used = settings.pairs.map { it.drivePath }.toSet()
+        val path = generateSequence(1) { it + 1 }.map { if (it == 1) base else "$base $it" }.first { it !in used }
+        settings.addPair(uri, path)
+        pairs = settings.pairs
         SyncWorker.schedule(context)
         refresh++
     }
@@ -142,7 +153,7 @@ private fun Screen() {
 
     // Log i liczniki z bazy (co 2 s, bo zapisuje je worker)
     var log by remember { mutableStateOf(emptyList<LogEntry>()) }
-    var uploadedCount by remember { mutableIntStateOf(0) }
+    var uploadedCounts by remember { mutableStateOf(emptyMap<Long, Int>()) }
     var exactAlarms by remember { mutableStateOf(true) }
     var status by remember { mutableIntStateOf(0) }  // zmiana = ponowny odczyt stanu ostatniej próby
     var batteryOk by remember { mutableStateOf(true) }
@@ -151,7 +162,7 @@ private fun Screen() {
         while (true) {
             withContext(Dispatchers.IO) {
                 log = db.recentLog(40)
-                uploadedCount = db.uploadedCount()
+                uploadedCounts = db.uploadedCounts()
             }
             status = (settings.lastAttemptAt xor settings.lastSyncAt).hashCode() + (settings.lastError?.hashCode() ?: 0)
             // Zgodę na dokładne budziki użytkownik zmienia w ustawieniach systemu
@@ -166,7 +177,9 @@ private fun Screen() {
         }
     }
 
-    val treeName = remember(refresh) { settings.treeUri?.let { LocalFiles.treeName(context, it) } }
+    val treeNames = remember(pairs, refresh) {
+        pairs.associate { it.id to runCatching { LocalFiles.treeName(context, it.treeUri) }.getOrNull() }
+    }
     val fmt = remember { SimpleDateFormat("dd.MM HH:mm:ss", Locale.getDefault()) }
 
     Column(
@@ -228,27 +241,68 @@ private fun Screen() {
             }
         }
 
-        Section(stringResource(R.string.section_phone_folder)) {
-            Text(treeName ?: stringResource(R.string.not_selected))
-            OutlinedButton(onClick = { pickFolder.launch(null) }) { Text(stringResource(R.string.choose_folder)) }
+        Section(stringResource(R.string.section_folders)) {
+            if (pairs.isEmpty()) Text(stringResource(R.string.no_folders), style = MaterialTheme.typography.bodySmall)
+            pairs.forEachIndexed { i, pair ->
+                if (i > 0) HorizontalDivider()
+                // Folder usunięty w telefonie albo cofnięty dostęp - nazwy nie da się odczytać
+                Text(treeNames[pair.id] ?: stringResource(R.string.folder_unavailable),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = if (treeNames[pair.id] == null) MaterialTheme.colorScheme.error else Color.Unspecified)
+                val edit = pathEdits[pair.id] ?: pair.drivePath
+                OutlinedTextField(
+                    value = edit,
+                    onValueChange = { pathEdits[pair.id] = it },
+                    label = { Text(stringResource(R.string.drive_path_label)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(stringResource(R.string.uploaded_count, uploadedCounts[pair.id] ?: 0),
+                    style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val newPath = Settings.cleanPath(edit)
+                    if (newPath != pair.drivePath && newPath.isNotEmpty()) {
+                        Button(onClick = {
+                            settings.setDrivePath(pair.id, newPath)
+                            // Nowe miejsce na Drive: pliki tego folderu idą tam od nowa (identyczne już
+                            // leżące w nowym miejscu są tylko powiązane, nie wysyłane drugi raz)
+                            db.forgetDrive(pair.id)
+                            db.log(context.getString(R.string.log_target_changed, newPath))
+                            pathEdits.remove(pair.id)
+                            pairs = settings.pairs
+                            refresh++
+                        }) { Text(stringResource(R.string.save)) }
+                    }
+                    OutlinedButton(onClick = { removing = pair }) { Text(stringResource(R.string.remove_folder)) }
+                }
+            }
+            Button(onClick = { addFolder.launch(null) }) { Text(stringResource(R.string.add_folder)) }
         }
 
-        Section(stringResource(R.string.section_drive_folder)) {
-            OutlinedTextField(
-                value = drivePath,
-                onValueChange = { drivePath = it },
-                label = { Text(stringResource(R.string.drive_path_label)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+        removing?.let { pair ->
+            AlertDialog(
+                onDismissRequest = { removing = null },
+                title = { Text(stringResource(R.string.remove_folder_title, treeNames[pair.id] ?: pair.drivePath)) },
+                text = { Text(stringResource(R.string.remove_folder_text, pair.drivePath)) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        settings.removePair(pair.id)
+                        db.forgetPair(pair.id)
+                        // Zgoda na folder jest zbędna, chyba że ten sam folder został dodany ponownie
+                        if (settings.pairs.none { it.treeUri == pair.treeUri }) {
+                            runCatching {
+                                context.contentResolver.releasePersistableUriPermission(pair.treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                        }
+                        pathEdits.remove(pair.id)
+                        pairs = settings.pairs
+                        removing = null
+                        SyncWorker.schedule(context)
+                        refresh++
+                    }) { Text(stringResource(R.string.remove_folder)) }
+                },
+                dismissButton = { TextButton(onClick = { removing = null }) { Text(stringResource(R.string.cancel)) } },
             )
-            if (drivePath.trim('/', ' ') != settings.drivePath) {
-                Button(onClick = {
-                    settings.drivePath = drivePath
-                    drivePath = settings.drivePath
-                    SyncWorker.schedule(context)
-                    refresh++
-                }) { Text(stringResource(R.string.save)) }
-            }
         }
 
         Section(stringResource(R.string.section_when)) {
@@ -312,7 +366,7 @@ private fun Screen() {
         }
 
         Section(stringResource(R.string.section_status)) {
-            Text(stringResource(R.string.uploaded_count, uploadedCount))
+            Text(stringResource(R.string.uploaded_count, uploadedCounts.values.sum()))
             val last = settings.lastSyncAt.also { refresh; status }
             Text(stringResource(R.string.last_sync, if (last > 0) fmt.format(Date(last)) else stringResource(R.string.never)))
             val pending = settings.pendingCount
@@ -333,7 +387,7 @@ private fun Screen() {
             }
             Button(
                 onClick = { SyncWorker.syncNow(context); refresh++ },
-                enabled = running == null && settings.treeUri != null && !settings.needsSignIn,
+                enabled = running == null && pairs.isNotEmpty() && !settings.needsSignIn,
             ) { Text(stringResource(R.string.sync_now)) }
         }
 

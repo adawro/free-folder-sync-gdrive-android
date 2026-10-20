@@ -18,16 +18,21 @@
     <string name="connect_failed">Could not connect: %1$s</string>
 
     <!-- 2./3. Folders -->
-    <string name="section_phone_folder">2. Folder on the phone</string>
-    <string name="not_selected">Not selected</string>
-    <string name="choose_folder">Choose folder</string>
-    <string name="section_drive_folder">3. Folder on Google Drive</string>
+    <string name="section_folders">2. Folders</string>
+    <string name="no_folders">Add a phone folder to copy to Google Drive. You can add several.</string>
+    <string name="add_folder">Add folder</string>
+    <string name="remove_folder">Remove</string>
+    <string name="remove_folder_title">Remove folder \"%1$s\"?</string>
+    <string name="remove_folder_text">The app will stop copying it. Files already uploaded stay on Drive in \"%1$s\".</string>
+    <string name="cancel">Cancel</string>
+    <string name="folder_already_added">This folder is already added</string>
+    <string name="folder_unavailable">Folder unavailable (deleted or access revoked)</string>
     <string name="drive_path_label">Path from \"My Drive\"</string>
     <string name="default_drive_parent">Phone</string>
     <string name="save">Save</string>
 
     <!-- 4. When -->
-    <string name="section_when">4. When to upload</string>
+    <string name="section_when">3. When to upload</string>
     <string name="upload_via">Upload via:</string>
     <string name="wifi">Wi-Fi</string>
     <string name="mobile_data">Mobile data</string>
@@ -55,6 +60,8 @@
     <!-- Log -->
     <string name="log_uploaded">Uploaded %1$s (%2$s)</string>
     <string name="log_resuming">%1$s: resuming from %2$s</string>
+    <string name="log_target_changed">New Drive folder: \"%1$s\" - this folder\'s files will be uploaded there</string>
+    <string name="log_folder_failed">%1$s: %2$s</string>
     <string name="log_target_gone">Folder \"%1$s\" is gone from Drive - all files will be uploaded again</string>
     <string name="log_summary">Sync: uploaded %1$d, errors %2$d, waiting %3$d</string>
     <string name="log_needs_sign_in">Google Drive needs to be reconnected - open the app</string>
