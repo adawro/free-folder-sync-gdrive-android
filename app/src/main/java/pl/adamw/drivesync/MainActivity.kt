@@ -103,6 +103,8 @@ private fun Screen() {
     var pairs by remember { mutableStateOf(settings.pairs) }
     val pathEdits = remember { mutableStateMapOf<Long, String>() }  // foldery w trakcie edycji ścieżki na Drive
     var removing by remember { mutableStateOf<FolderPair?>(null) }
+    var adding by remember { mutableStateOf<Uri?>(null) }  // wybrany folder czeka na podanie ścieżki na Drive
+    var addingPath by remember { mutableStateOf("") }
     var clientId by remember { mutableStateOf(settings.customClientId) }
     var clientSecret by remember { mutableStateOf(CustomOAuth.clientSecret(context).orEmpty()) }
 
@@ -134,15 +136,11 @@ private fun Screen() {
             Toast.makeText(context, R.string.folder_already_added, Toast.LENGTH_SHORT).show()
             return@rememberLauncherForActivityResult
         }
-        context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        // Domyślnie "Telefon/<nazwa folderu>"; dwa foldery o tej samej nazwie dostają " 2", " 3"...
+        // Podpowiedź "Telefon/<nazwa folderu>"; dwa foldery o tej samej nazwie dostają " 2", " 3"...
         val base = context.getString(R.string.default_drive_parent) + "/" + (LocalFiles.treeName(context, uri) ?: "folder")
         val used = settings.pairs.map { it.drivePath }.toSet()
-        val path = generateSequence(1) { it + 1 }.map { if (it == 1) base else "$base $it" }.first { it !in used }
-        settings.addPair(uri, path)
-        pairs = settings.pairs
-        SyncWorker.schedule(context)
-        refresh++
+        addingPath = generateSequence(1) { it + 1 }.map { if (it == 1) base else "$base $it" }.first { it !in used }
+        adding = uri
     }
 
     val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
@@ -190,6 +188,7 @@ private fun Screen() {
     val treeNames = remember(pairs, refresh) {
         pairs.associate { it.id to runCatching { LocalFiles.treeName(context, it.treeUri) }.getOrNull() }
     }
+    val treePaths = remember(pairs) { pairs.associate { it.id to LocalFiles.treePath(context, it.treeUri) } }
     val fmt = remember { SimpleDateFormat("dd.MM HH:mm:ss", Locale.getDefault()) }
 
     Column(
@@ -267,7 +266,9 @@ private fun Screen() {
                     editing = edit != null,
                     onEdit = { pathEdits[pair.id] = pair.drivePath },
                 )
-                Text(stringResource(R.string.uploaded_count, uploadedCounts[pair.id] ?: 0),
+                val count = uploadedCounts[pair.id] ?: 0
+                Text(treePaths[pair.id]?.let { stringResource(R.string.uploaded_count_from, count, it) }
+                    ?: stringResource(R.string.uploaded_count, count),
                     style = MaterialTheme.typography.bodySmall)
                 Row(
                     Modifier.fillMaxWidth().toggleable(value = pair.watch, role = Role.Checkbox) {
@@ -309,6 +310,41 @@ private fun Screen() {
                 }
             }
             Button(onClick = { addFolder.launch(null) }) { Text(stringResource(R.string.add_folder)) }
+        }
+
+        adding?.let { uri ->
+            val path = Settings.cleanPath(addingPath)
+            val inUse = settings.pairs.any { it.drivePath == path }
+            AlertDialog(
+                onDismissRequest = { adding = null },
+                title = { Text(stringResource(R.string.add_folder_title)) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.add_folder_text,
+                            LocalFiles.treePath(context, uri) ?: LocalFiles.treeName(context, uri) ?: "?"))
+                        OutlinedTextField(
+                            value = addingPath, onValueChange = { addingPath = it },
+                            label = { Text(stringResource(R.string.drive_path_label)) },
+                            singleLine = true, modifier = Modifier.fillMaxWidth(),
+                            isError = inUse,
+                            supportingText = if (inUse) {
+                                { Text(stringResource(R.string.drive_path_in_use)) }
+                            } else null,
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        settings.addPair(uri, path)
+                        pairs = settings.pairs
+                        adding = null
+                        SyncWorker.schedule(context)
+                        refresh++
+                    }, enabled = path.isNotEmpty() && !inUse) { Text(stringResource(R.string.add)) }
+                },
+                dismissButton = { TextButton(onClick = { adding = null }) { Text(stringResource(R.string.cancel)) } },
+            )
         }
 
         removing?.let { pair ->

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Free Folder Sync</string>
-    <string name="app_subtitle">Copies a folder from your phone to Google Drive (one way, nothing is ever deleted).</string>
+    <string name="app_subtitle">Copies folders from your phone to Google Drive (one way, nothing is ever deleted).</string>
 
     <!-- 1. Account -->
     <string name="section_account">1. Google account</string>
@@ -21,6 +21,10 @@
     <string name="section_folders">2. Folders</string>
     <string name="no_folders">Add a phone folder to copy to Google Drive. You can add several.</string>
     <string name="add_folder">Add folder</string>
+    <string name="add_folder_title">Where on Google Drive?</string>
+    <string name="add_folder_text">%1$s will be copied to this folder on Google Drive (created if it does not exist).</string>
+    <string name="drive_path_in_use">Another folder already uses this path</string>
+    <string name="add">Add</string>
     <string name="remove_folder">Remove</string>
     <string name="remove_folder_title">Remove folder \"%1$s\"?</string>
     <string name="remove_folder_text">The app will stop copying it. Files already uploaded stay on Drive in \"%1$s\".</string>
@@ -32,7 +36,7 @@
     <string name="cancel">Cancel</string>
     <string name="folder_already_added">This folder is already added</string>
     <string name="folder_unavailable">Folder unavailable (deleted or access revoked)</string>
-    <string name="drive_path_label">Path from \"My Drive\"</string>
+    <string name="drive_path_label">Path on Google Drive</string>
     <string name="default_drive_parent">Phone</string>
     <string name="save">Save</string>
     <string name="edit">Edit</string>
@@ -49,6 +53,8 @@
     <!-- Status -->
     <string name="section_status">Status</string>
     <string name="uploaded_count">Uploaded files: %1$d</string>
+    <string name="uploaded_count_from">Uploaded files: %1$d from %2$s</string>
+    <string name="internal_storage">Internal storage</string>
     <string name="last_sync">Last successful sync: %1$s</string>
     <string name="never">not yet</string>
     <string name="uploading_file">Uploading: %1$s (%2$d%%)</string>

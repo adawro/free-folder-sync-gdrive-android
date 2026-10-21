@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_subtitle">Kopiowanie folderu z telefonu na Google Drive (w jedną stronę, nic nie jest usuwane).</string>
+    <string name="app_subtitle">Kopiowanie folderów z telefonu na Google Drive (w jedną stronę, nic nie jest usuwane).</string>
 
     <string name="section_account">1. Konto Google</string>
     <string name="connected">✓ Zalogowano pomyślnie</string>
@@ -16,6 +16,10 @@
     <string name="section_folders">2. Foldery</string>
     <string name="no_folders">Dodaj folder z telefonu, który ma być kopiowany na Dysk Google. Możesz dodać kilka.</string>
     <string name="add_folder">Dodaj folder</string>
+    <string name="add_folder_title">Gdzie na Google Drive?</string>
+    <string name="add_folder_text">%1$s będzie kopiowany do tego folderu na Google Drive (zostanie utworzony, jeśli go nie ma).</string>
+    <string name="drive_path_in_use">Tej ścieżki używa już inny folder</string>
+    <string name="add">Dodaj</string>
     <string name="remove_folder">Usuń</string>
     <string name="remove_folder_title">Usunąć folder „%1$s”?</string>
     <string name="remove_folder_text">Aplikacja przestanie go kopiować. Pliki już wysłane zostają na Drive w „%1$s”.</string>
@@ -27,7 +31,7 @@
     <string name="cancel">Anuluj</string>
     <string name="folder_already_added">Ten folder jest już dodany</string>
     <string name="folder_unavailable">Folder niedostępny (usunięty albo cofnięty dostęp)</string>
-    <string name="drive_path_label">Ścieżka od \"Mój dysk\"</string>
+    <string name="drive_path_label">Ścieżka na Google Drive</string>
     <string name="default_drive_parent">Telefon</string>
     <string name="save">Zapisz</string>
     <string name="edit">Edytuj</string>
@@ -41,6 +45,8 @@
 
     <string name="section_status">Stan</string>
     <string name="uploaded_count">Wysłanych plików: %1$d</string>
+    <string name="uploaded_count_from">Wysłanych plików: %1$d z %2$s</string>
+    <string name="internal_storage">Pamięć wewnętrzna</string>
     <string name="last_sync">Ostatnia udana synchronizacja: %1$s</string>
     <string name="never">jeszcze nie było</string>
     <string name="uploading_file">Wysyłanie: %1$s (%2$d%%)</string>

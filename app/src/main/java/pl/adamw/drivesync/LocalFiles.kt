@@ -48,6 +48,19 @@ object LocalFiles {
     }
 
     /** Nazwa wybranego folderu (do wyświetlenia i jako domyślny folder na Drive). */
+    /**
+     * Ścieżka folderu do pokazania, np. "Pamięć wewnętrzna/Documents/Signal" (karta SD: jej identyfikator).
+     * null dla innych dostawców niż pamięć urządzenia - tam identyfikator nie jest ścieżką.
+     */
+    fun treePath(context: Context, tree: Uri): String? {
+        if (tree.authority != "com.android.externalstorage.documents") return null
+        val id = DocumentsContract.getTreeDocumentId(tree)
+        val volume = id.substringBefore(':')
+        val root = if (volume == "primary") context.getString(R.string.internal_storage) else volume
+        val path = id.substringAfter(':', "")
+        return if (path.isEmpty()) root else "$root/$path"
+    }
+
     fun treeName(context: Context, tree: Uri): String? {
         val uri = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
         return context.contentResolver.query(uri, arrayOf(Document.COLUMN_DISPLAY_NAME), null, null, null)
