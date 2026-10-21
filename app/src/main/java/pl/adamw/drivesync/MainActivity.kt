@@ -29,15 +29,20 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -96,7 +101,7 @@ private fun Screen() {
     var refresh by remember { mutableIntStateOf(0) }
     var signInError by remember { mutableStateOf<String?>(null) }
     var pairs by remember { mutableStateOf(settings.pairs) }
-    val pathEdits = remember { mutableStateMapOf<Long, String>() }  // niezapisane zmiany ścieżek na Drive
+    val pathEdits = remember { mutableStateMapOf<Long, String>() }  // foldery w trakcie edycji ścieżki na Drive
     var removing by remember { mutableStateOf<FolderPair?>(null) }
     var clientId by remember { mutableStateOf(settings.customClientId) }
     var clientSecret by remember { mutableStateOf(CustomOAuth.clientSecret(context).orEmpty()) }
@@ -254,13 +259,13 @@ private fun Screen() {
                 Text(treeNames[pair.id] ?: stringResource(R.string.folder_unavailable),
                     style = MaterialTheme.typography.titleSmall,
                     color = if (treeNames[pair.id] == null) MaterialTheme.colorScheme.error else Color.Unspecified)
-                val edit = pathEdits[pair.id] ?: pair.drivePath
-                OutlinedTextField(
-                    value = edit,
+                val edit = pathEdits[pair.id]
+                LockedTextField(
+                    value = edit ?: pair.drivePath,
                     onValueChange = { pathEdits[pair.id] = it },
-                    label = { Text(stringResource(R.string.drive_path_label)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    label = stringResource(R.string.drive_path_label),
+                    editing = edit != null,
+                    onEdit = { pathEdits[pair.id] = pair.drivePath },
                 )
                 Text(stringResource(R.string.uploaded_count, uploadedCounts[pair.id] ?: 0),
                     style = MaterialTheme.typography.bodySmall)
@@ -278,25 +283,29 @@ private fun Screen() {
                 }
                 if (pair.watch) Text(stringResource(R.string.watch_hint), style = MaterialTheme.typography.bodySmall)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { removing = pair }) { Text(stringResource(R.string.remove_folder)) }
-                    val newPath = Settings.cleanPath(edit)
-                    if (newPath != pair.drivePath && newPath.isNotEmpty()) {
+                    if (edit == null) {
+                        OutlinedButton(onClick = { removing = pair }) { Text(stringResource(R.string.remove_folder)) }
+                        Spacer(Modifier.weight(1f))
+                        Button(
+                            onClick = { SyncWorker.syncNow(context, pair.id); refresh++ },
+                            enabled = running == null && !settings.needsSignIn,
+                        ) { Text(stringResource(R.string.sync_folder)) }
+                    } else {
+                        OutlinedButton(onClick = { pathEdits.remove(pair.id) }) { Text(stringResource(R.string.cancel)) }
+                        val newPath = Settings.cleanPath(edit)
                         Button(onClick = {
-                            settings.setDrivePath(pair.id, newPath)
-                            // Nowe miejsce na Drive: pliki tego folderu idą tam od nowa (identyczne już
-                            // leżące w nowym miejscu są tylko powiązane, nie wysyłane drugi raz)
-                            db.forgetDrive(pair.id)
-                            db.log(context.getString(R.string.log_target_changed, newPath))
+                            if (newPath != pair.drivePath) {
+                                settings.setDrivePath(pair.id, newPath)
+                                // Nowe miejsce na Drive: pliki tego folderu idą tam od nowa (identyczne już
+                                // leżące w nowym miejscu są tylko powiązane, nie wysyłane drugi raz)
+                                db.forgetDrive(pair.id)
+                                db.log(context.getString(R.string.log_target_changed, newPath))
+                                pairs = settings.pairs
+                                refresh++
+                            }
                             pathEdits.remove(pair.id)
-                            pairs = settings.pairs
-                            refresh++
-                        }) { Text(stringResource(R.string.save)) }
+                        }, enabled = newPath.isNotEmpty()) { Text(stringResource(R.string.save)) }
                     }
-                    Spacer(Modifier.weight(1f))
-                    Button(
-                        onClick = { SyncWorker.syncNow(context, pair.id); refresh++ },
-                        enabled = running == null && !settings.needsSignIn && newPath == pair.drivePath,
-                    ) { Text(stringResource(R.string.sync_folder)) }
                 }
             }
             Button(onClick = { addFolder.launch(null) }) { Text(stringResource(R.string.add_folder)) }
@@ -441,6 +450,32 @@ private fun Screen() {
             }
         }
     }
+}
+
+/**
+ * Pole tekstowe zablokowane, dopóki użytkownik nie stuknie ołówka "Edytuj" - bez przypadkowych zmian przy
+ * przewijaniu. Zablokowane wygląda jak zwykłe pole (nie wyszarzone), bo pokazuje aktualne ustawienie;
+ * w trakcie edycji Zapisz/Anuluj są pod polem.
+ */
+@Composable
+private fun LockedTextField(
+    value: String, onValueChange: (String) -> Unit, label: String, editing: Boolean, onEdit: () -> Unit,
+) {
+    val c = MaterialTheme.colorScheme
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        enabled = editing,
+        label = { Text(label) },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+        trailingIcon = if (editing) null else {
+            { IconButton(onClick = onEdit) { Icon(Icons.Filled.Edit, stringResource(R.string.edit)) } }
+        },
+        colors = OutlinedTextFieldDefaults.colors(
+            disabledTextColor = c.onSurface, disabledBorderColor = c.outline, disabledLabelColor = c.onSurfaceVariant,
+        ),
+    )
 }
 
 @Composable

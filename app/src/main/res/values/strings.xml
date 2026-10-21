@@ -35,6 +35,7 @@
     <string name="drive_path_label">Path from \"My Drive\"</string>
     <string name="default_drive_parent">Phone</string>
     <string name="save">Save</string>
+    <string name="edit">Edit</string>
 
     <!-- 4. When -->
     <string name="section_when">3. When to upload</string>

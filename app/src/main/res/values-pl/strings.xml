@@ -30,6 +30,7 @@
     <string name="drive_path_label">Ścieżka od \"Mój dysk\"</string>
     <string name="default_drive_parent">Telefon</string>
     <string name="save">Zapisz</string>
+    <string name="edit">Edytuj</string>
 
     <string name="section_when">3. Kiedy wysyłać</string>
     <string name="upload_via">Wysyłaj przez:</string>
