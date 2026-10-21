@@ -1,6 +1,6 @@
 # Free Folder Sync for Google Drive
 
-A small, free and open-source Android app that copies **one folder from your phone to Google Drive** once a day.
+A small, free and open-source Android app that copies **folders from your phone to Google Drive** once a day - or right away when new files appear.
 No ads, no tracking, no account on anyone's server - it talks directly to *your* Google Drive using *your own*
 Google Cloud OAuth client.
 
@@ -11,6 +11,9 @@ Made for things like Signal backups: the phone keeps only the newest backups, Dr
 ## Features
 
 - **One-way copy** phone → Drive. Nothing is ever deleted on Drive.
+- **Multiple folders**, each with its own destination path on Drive and its own "Sync" button.
+- Optional **"upload new files right away"** per folder: new files are sent within a few minutes
+  (WorkManager content trigger on MediaStore), not only at the daily time.
 - **Daily at a time you choose** (default 03:00), plus a "sync now" button. Uses an exact system alarm, so the upload
   starts on time even when the phone is idle overnight (Doze) - grant **Alarms & reminders** when the app asks.
 - **Network switches**: Wi-Fi and/or mobile data (never while roaming), optional "only while charging".
@@ -18,12 +21,13 @@ Made for things like Signal backups: the phone keeps only the newest backups, Dr
 - **Resumable uploads** in 8 MiB chunks - a big file interrupted by a lost connection continues where it stopped.
 - **MD5 verification** of every uploaded file.
 - Changed file → **new revision** of the same Drive file (no duplicates).
-- Files modified in the last 2 minutes are skipped (e.g. a backup still being written).
+- Files modified in the last 2 minutes (15 s for a manual sync) are skipped, e.g. a backup still being written;
+  the app checks again a few minutes later.
 - Files already on Drive (same name, size and MD5 - e.g. after reinstalling the app) are linked, not uploaded again.
 - Google rate limits (403/429), server errors and short network/DNS outages are retried with exponential backoff.
 - Warns when battery optimisation or Data Saver can cut the app off from the network at night.
 - Status shows the last error and files still waiting; the log can be copied to the clipboard.
-- Folder chosen with the system picker (Storage Access Framework) - no "all files" permission.
+- Folders chosen with the system picker (Storage Access Framework) - no "all files" permission.
 - Minimal Drive scope **`drive.file`**: the app can only see files and folders it created.
 
 ## Setup: your own Google OAuth client (one time, ~10 minutes)
@@ -75,15 +79,16 @@ builtinAuth=false
 | File | Purpose |
 |---|---|
 | `MainActivity.kt` | UI (Jetpack Compose): account, folders, schedule, status, log |
-| `SyncWorker.kt` | WorkManager job, daily alarm scheduling, notifications |
+| `SyncWorker.kt` | WorkManager job, daily alarm scheduling, "right away" watch, notifications |
 | `SyncAlarmReceiver.kt` | daily alarm; re-arms it after reboot, app update and time changes |
-| `SyncEngine.kt` | compares the folder with the local database, uploads, MD5 check |
+| `SyncEngine.kt` | compares each folder with the local database, uploads, MD5 check |
 | `DriveApi.kt` | minimal Drive API v3 client (OkHttp): folders, resumable upload |
 | `CustomOAuth.kt` | browser sign-in with the user's own OAuth client, token refresh |
 | `Auth.kt` | access token: custom client or built-in (Google Identity) |
 | `SecretStore.kt` | encrypted storage (Android Keystore) |
 | `LocalFiles.kt` | lists files in the SAF folder |
-| `Db.kt` | SQLite: uploaded files, Drive folder ids, log |
+| `Db.kt` | SQLite: uploaded files per folder, Drive folder ids, log |
+| `Settings.kt` | settings and the list of folders (phone folder ↔ Drive path) |
 
 ## License
 
