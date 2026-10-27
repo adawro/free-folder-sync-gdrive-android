@@ -76,6 +76,15 @@ class Db private constructor(context: Context) : SQLiteOpenHelper(context, "driv
         readableDatabase.rawQuery("SELECT drive_id FROM folders WHERE path = ?", arrayOf(path))
             .use { if (it.moveToFirst()) it.getString(0) else null }
 
+    /** Zapamiętane id folderu docelowego i jego podfolderów (do sprawdzenia, czy nadal są na Drive). */
+    fun foldersUnder(prefix: String): Map<String, String> =
+        readableDatabase.rawQuery(
+            "SELECT path, drive_id FROM folders WHERE path = ? OR path LIKE ?",
+            arrayOf(prefix, "$prefix/%"),
+        ).use { c ->
+            buildMap { while (c.moveToNext()) put(c.getString(0), c.getString(1)) }
+        }
+
     fun saveFolder(path: String, driveId: String) {
         writableDatabase.insertWithOnConflict("folders", null, ContentValues().apply {
             put("path", path); put("drive_id", driveId)

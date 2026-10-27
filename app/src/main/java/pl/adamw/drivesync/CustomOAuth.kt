@@ -8,6 +8,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
@@ -36,6 +37,7 @@ object CustomOAuth {
     /** Logowanie trwa, gdy użytkownik jest w przeglądarce - nie może zależeć od cyklu życia aktywności. */
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var pending: Job? = null
+    @Volatile private var pendingServer: ServerSocket? = null
 
     @Volatile private var accessToken: String? = null
     @Volatile private var expiresAt = 0L
@@ -72,7 +74,9 @@ object CustomOAuth {
             return
         }
         pending?.cancel()
+        runCatching { pendingServer?.close() }
         val server = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).apply { soTimeout = 5 * 60 * 1000 }
+        pendingServer = server
         val redirect = "http://127.0.0.1:${server.localPort}"
         val verifier = randomString(64)
         val state = randomString(16)
@@ -119,29 +123,36 @@ object CustomOAuth {
             } catch (e: IOException) {
                 app.getString(R.string.oauth_error, e.message)
             }
-            onDone(error)
+            if (isActive) onDone(error)
         }
         context.startActivity(Intent(Intent.ACTION_VIEW, url).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
-    /** Odbiera jedno żądanie GET /?code=...&state=... i odpowiada stroną "wróć do aplikacji". */
+    /** Odbiera żądanie GET /?code=...&state=... i odpowiada stroną "wróć do aplikacji". */
     private fun receiveRedirect(context: Context, server: ServerSocket): Map<String, String> {
-        server.accept().use { socket ->
-            val requestLine = socket.getInputStream().bufferedReader().readLine().orEmpty()
-            val target = requestLine.split(' ').getOrNull(1).orEmpty()
-            val uri = Uri.parse("http://127.0.0.1$target")
-            val ok = uri.getQueryParameter("code") != null
-            val html = """<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-                |</head><body style="font-family:sans-serif;padding:24px">
-                |<h2>${context.getString(if (ok) R.string.oauth_page_ok else R.string.oauth_page_fail)}</h2>
-                |<p>${context.getString(R.string.oauth_page_back)}</p></body></html>""".trimMargin()
-            val body = html.toByteArray()
-            socket.getOutputStream().apply {
-                write("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray())
-                write(body)
-                flush()
+        while (true) {
+            server.accept().use { socket ->
+                socket.soTimeout = 5_000
+                val requestLine = socket.getInputStream().bufferedReader().readLine().orEmpty()
+                val target = requestLine.split(' ').getOrNull(1).orEmpty()
+                if (target.isEmpty() || target.startsWith("/favicon")) {
+                    socket.getOutputStream().write("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
+                    return@use
+                }
+                val uri = Uri.parse("http://127.0.0.1$target")
+                val ok = uri.getQueryParameter("code") != null
+                val html = """<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+                    |</head><body style="font-family:sans-serif;padding:24px">
+                    |<h2>${context.getString(if (ok) R.string.oauth_page_ok else R.string.oauth_page_fail)}</h2>
+                    |<p>${context.getString(R.string.oauth_page_back)}</p></body></html>""".trimMargin()
+                val body = html.toByteArray()
+                socket.getOutputStream().apply {
+                    write("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray())
+                    write(body)
+                    flush()
+                }
+                return uri.queryParameterNames.associateWith { uri.getQueryParameter(it).orEmpty() }
             }
-            return uri.queryParameterNames.associateWith { uri.getQueryParameter(it).orEmpty() }
         }
     }
 

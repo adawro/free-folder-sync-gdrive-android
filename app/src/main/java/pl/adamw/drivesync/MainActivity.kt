@@ -66,6 +66,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.google.android.gms.auth.api.identity.Identity
@@ -159,29 +161,31 @@ private fun Screen() {
     val retryAt = works.filter { it.state == WorkInfo.State.ENQUEUED && it.runAttemptCount > 0 }
         .minOfOrNull { it.nextScheduleTimeMillis }
 
-    // Log i liczniki z bazy (co 2 s, bo zapisuje je worker)
+    // Log i liczniki z bazy (co 2 s, gdy ekran jest widoczny)
     var log by remember { mutableStateOf(emptyList<LogEntry>()) }
     var uploadedCounts by remember { mutableStateOf(emptyMap<Long, Int>()) }
     var exactAlarms by remember { mutableStateOf(true) }
     var status by remember { mutableIntStateOf(0) }  // zmiana = ponowny odczyt stanu ostatniej próby
     var batteryOk by remember { mutableStateOf(true) }
     var dataSaverOk by remember { mutableStateOf(true) }
-    LaunchedEffect(refresh) {
-        while (true) {
-            withContext(Dispatchers.IO) {
-                log = db.recentLog(40)
-                uploadedCounts = db.uploadedCounts()
+    LaunchedEffect(refresh, activity) {
+        activity.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                withContext(Dispatchers.IO) {
+                    log = db.recentLog(40)
+                    uploadedCounts = db.uploadedCounts()
+                }
+                status = (settings.lastAttemptAt xor settings.lastSyncAt).hashCode() + (settings.lastError?.hashCode() ?: 0)
+                // Zgodę na dokładne budziki użytkownik zmienia w ustawieniach systemu
+                val exact = SyncWorker.canScheduleExact(context)
+                if (exact && !exactAlarms) SyncWorker.schedule(context)
+                exactAlarms = exact
+                // Bez tych zgód Android w nocy odcina aplikacji sieć ("Unable to resolve host www.googleapis.com")
+                batteryOk = context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
+                dataSaverOk = context.getSystemService(ConnectivityManager::class.java).restrictBackgroundStatus !=
+                    ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED
+                delay(2000)
             }
-            status = (settings.lastAttemptAt xor settings.lastSyncAt).hashCode() + (settings.lastError?.hashCode() ?: 0)
-            // Zgodę na dokładne budziki użytkownik zmienia w ustawieniach systemu
-            val exact = SyncWorker.canScheduleExact(context)
-            if (exact && !exactAlarms) SyncWorker.schedule(context)
-            exactAlarms = exact
-            // Bez tych zgód Android w nocy odcina aplikacji sieć ("Unable to resolve host www.googleapis.com")
-            batteryOk = context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
-            dataSaverOk = context.getSystemService(ConnectivityManager::class.java).restrictBackgroundStatus !=
-                ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED
-            delay(2000)
         }
     }
 
@@ -239,9 +243,11 @@ private fun Screen() {
                             CustomOAuth.saveClient(context, clientId, clientSecret)
                             signInError = null
                             CustomOAuth.signIn(context) { error ->
-                                signInError = error
-                                if (error == null) SyncWorker.schedule(context)
-                                refresh++
+                                activity.runOnUiThread {
+                                    signInError = error
+                                    if (error == null) SyncWorker.schedule(context)
+                                    refresh++
+                                }
                             }
                         },
                         enabled = clientId.isNotBlank() && clientSecret.isNotBlank(),

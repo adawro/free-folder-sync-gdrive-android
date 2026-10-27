@@ -2,7 +2,7 @@ package pl.adamw.drivesync
 
 import android.content.Context
 import android.net.Uri
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.delay
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaType
@@ -17,6 +17,7 @@ import org.json.JSONObject
 import java.io.FileInputStream
 import java.io.IOException
 import java.net.ConnectException
+import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 import kotlin.random.Random
@@ -51,14 +52,14 @@ class DriveApi(private val context: Context) {
     var requests = 0
         private set
 
-    private fun currentToken(): String = token ?: runBlocking { Auth.token(context) }.also { token = it }
+    private suspend fun currentToken(): String = token ?: Auth.token(context).also { token = it }
 
     /**
      * Wykonuje żądanie z tokenem; po 401 raz odświeża token. Limit zapytań (403 rate limit, 429) i błędy serwera (5xx)
      * ponawia z wykładniczym odstępem (1, 2, 4, 8, 16, 32 s) - tak zaleca Google. Tak samo brak DNS i nieudane
      * połączenie. Wywołujący zamyka Response.
      */
-    private fun call(build: Request.Builder.() -> Unit): Response {
+    private suspend fun call(build: Request.Builder.() -> Unit): Response {
         var refreshed = false
         var attempt = 0
         while (true) {
@@ -68,8 +69,9 @@ class DriveApi(private val context: Context) {
                 http.newCall(Request.Builder().apply(build).header("Authorization", "Bearer $t").build()).execute()
             } catch (e: IOException) {
                 // Chwilowy brak DNS/połączenia (np. telefon dopiero się wybudził) - żądanie nie wyszło, można ponowić
-                if ((e !is UnknownHostException && e !is ConnectException) || attempt >= MAX_RETRIES) throw e
-                Thread.sleep((1000L shl attempt) + Random.nextLong(1000))
+                val transient = e is UnknownHostException || e is ConnectException || e is SocketTimeoutException
+                if (!transient || attempt >= MAX_RETRIES) throw e
+                delay((1000L shl attempt) + Random.nextLong(1000))
                 attempt++
                 continue
             }
@@ -82,7 +84,7 @@ class DriveApi(private val context: Context) {
             }
             if (!isTransient(response) || attempt >= MAX_RETRIES) return response
             response.close()
-            Thread.sleep((1000L shl attempt) + Random.nextLong(1000))
+            delay((1000L shl attempt) + Random.nextLong(1000))
             attempt++
         }
     }
@@ -101,7 +103,7 @@ class DriveApi(private val context: Context) {
 
     // ---------- Foldery ----------
 
-    fun findFolder(name: String, parentId: String): String? {
+    suspend fun findFolder(name: String, parentId: String): String? {
         val q = "name = '${name.replace("\\", "\\\\").replace("'", "\\'")}' and '$parentId' in parents " +
             "and mimeType = '$FOLDER_MIME' and trashed = false"
         val url = "$API/files".toHttpUrl().newBuilder()
@@ -114,7 +116,7 @@ class DriveApi(private val context: Context) {
     }
 
     /** Pliki (nie foldery) o tej nazwie w folderze - do rozpoznania plików wysłanych wcześniej (np. przed reinstalacją). */
-    fun findFiles(name: String, parentId: String): List<DriveFile> {
+    suspend fun findFiles(name: String, parentId: String): List<DriveFile> {
         val q = "name = '${name.replace("\\", "\\\\").replace("'", "\\'")}' and '$parentId' in parents " +
             "and mimeType != '$FOLDER_MIME' and trashed = false"
         val url = "$API/files".toHttpUrl().newBuilder()
@@ -129,14 +131,14 @@ class DriveApi(private val context: Context) {
         }
     }
 
-    fun createFolder(name: String, parentId: String): String {
+    suspend fun createFolder(name: String, parentId: String): String {
         val meta = JSONObject().put("name", name).put("mimeType", FOLDER_MIME).put("parents", JSONArray().put(parentId))
         return call { url("$API/files?fields=id"); post(meta.toString().toRequestBody(JSON)) }
             .jsonOrThrow().getString("id")
     }
 
     /** Czy plik/folder nadal istnieje i nie jest w koszu. */
-    fun exists(id: String): Boolean = call { url("$API/files/$id?fields=id,trashed") }.use {
+    suspend fun exists(id: String): Boolean = call { url("$API/files/$id?fields=id,trashed") }.use {
         when {
             it.code == 404 -> false
             !it.isSuccessful -> throw DriveException(it.code, it.body?.string().orEmpty().take(1500))
@@ -150,7 +152,7 @@ class DriveApi(private val context: Context) {
      * Zaczyna sesję wysyłki. Z [existingId] - nowa wersja istniejącego pliku (bez duplikatu),
      * bez niego - nowy plik w [parentId]. Zwraca URI sesji albo null, gdy [existingId] już nie istnieje.
      */
-    fun startUpload(name: String, parentId: String, existingId: String?, size: Long, mime: String): String? {
+    suspend fun startUpload(name: String, parentId: String, existingId: String?, size: Long, mime: String): String? {
         val response = if (existingId != null) {
             call {
                 url("$UPLOAD/files/$existingId?uploadType=resumable&fields=$FILE_FIELDS")
@@ -175,19 +177,22 @@ class DriveApi(private val context: Context) {
     }
 
     /** Ile bajtów serwer już ma w tej sesji (do wznowienia po przerwaniu). */
-    fun queryUpload(session: String, total: Long): UploadState =
+    suspend fun queryUpload(session: String, total: Long): UploadState =
         call { url(session); put(ByteArray(0).toRequestBody()); header("Content-Range", "bytes */$total") }
             .use { parseUploadResponse(it) }
 
     /** Wysyła fragment pliku od [offset]; długość fragmentu to wielokrotność 256 KiB (poza ostatnim). */
-    fun uploadChunk(session: String, uri: Uri, offset: Long, total: Long, chunk: Long): UploadState {
+    suspend fun uploadChunk(session: String, uri: Uri, offset: Long, total: Long, chunk: Long): UploadState {
         val length = minOf(chunk, total - offset)
         val body = object : RequestBody() {
             override fun contentType(): MediaType? = null
             override fun contentLength() = length
             override fun writeTo(sink: BufferedSink) {
-                context.contentResolver.openFileDescriptor(uri, "r")!!.use { pfd ->
-                    FileInputStream(pfd.fileDescriptor).use { input ->
+                if (length == 0L) return
+                val pfd = context.contentResolver.openFileDescriptor(uri, "r")
+                    ?: throw IOException("Cannot open $uri")
+                pfd.use {
+                    FileInputStream(it.fileDescriptor).use { input ->
                         input.channel.position(offset)
                         val buf = ByteArray(64 * 1024)
                         var left = length
@@ -201,8 +206,13 @@ class DriveApi(private val context: Context) {
                 }
             }
         }
-        val range = if (total == 0L) "bytes */0" else "bytes $offset-${offset + length - 1}/$total"
-        return call { url(session); put(body); header("Content-Range", range) }.use { parseUploadResponse(it) }
+        // Dla pustego pliku (0 B) nagłówek "bytes */0" oznacza zapytanie o stan sesji (308), a nie koniec wysyłki
+        val range = if (total == 0L) null else "bytes $offset-${offset + length - 1}/$total"
+        return call {
+            url(session)
+            put(body)
+            if (range != null) header("Content-Range", range)
+        }.use { parseUploadResponse(it) }
     }
 
     private fun parseUploadResponse(r: Response): UploadState = when {
